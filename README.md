@@ -1,4 +1,4 @@
-# eos-analysis-template
+# Ersilia Model Hub figures and analyses
 
 This repository provides a structured template for setting up new research analysis in Ersilia.
 
