@@ -8,10 +8,7 @@ Replace this paragraph with a short description of the project. This description
 
 ## Tracking details
 
-The project is tracked by Git (mainly for code) and DVC (mainly for data):
-
-* Tracked by Git and linked to a Github repository: only src, scripts and notebooks.
-* Tracked by DVC and linked to a Google Drive folder inside "Projects/<<Repository name>>".
+Data artifacts (`data/`, `output/`) are synced to S3 via [eosvc](https://github.com/ersilia-os/eosvc) and are not stored in Git. Access rules are defined in `access.json` at the repo root.
 
 ## Repository structure
 
@@ -23,7 +20,6 @@ eos-analysis-template/
 ├── LICENSE
 ├── README.md
 ├── .gitignore
-├── install.sh
 ├── requirements.txt
 │
 ├── data/
@@ -48,25 +44,16 @@ eos-analysis-template/
 - **data/**
   - **raw/** → Original, untouched datasets  
   - **processed/** → Cleaned and transformed datasets  
-
 - **scripts/** → Standalone scripts for preprocessing or automation  
-
 - **notebooks/** → Jupyter notebooks for exploration and prototyping  
-
 - **assets/** → Images, figures, and other static resources  
-
 - **output/**
   - **results/** → Numerical results, logs, or text outputs  
   - **plots/** → Visualizations and charts  
-
 - **src/** → Core source code and reusable modules  
-
 - **tools/** → Helper utilities and development tools  
-
 - **docs/** → Project documentation and reports  
-
 - **tmp/** → Temporary files or intermediate outputs  
-
 - **.git/** → Git metadata (version control)  
 
 ---
@@ -89,7 +76,29 @@ Write a brief description about the scientific motivation and goal of the projec
 
 ## Using this repository
 
-This repository may contain data and outputs that are not stored in GitHub. You can use [evc](https://github.com/ersilia-os/evc) to download these files or, otherwise, simply download them and place them in the current folder following [this link](https://example.com).
+Data and outputs are not stored in Git. Use `eosvc` to sync them from S3.
+
+**Install:**
+```bash
+pip install -r requirements.txt
+```
+
+**Set up credentials** (skip if accessing public data only):
+```bash
+eosvc config --access-key-id "..." --secret-access-key "..." --region "eu-central-2"
+```
+
+**Download data:**
+```bash
+eosvc download --path data/
+eosvc download --path output/
+```
+
+**Upload data:**
+```bash
+eosvc upload --path data/
+eosvc upload --path output/
+```
 
 ## About the Ersilia Open Source Initiative
 
