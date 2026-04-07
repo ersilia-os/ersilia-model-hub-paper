@@ -1,21 +1,26 @@
 # Ersilia Model Hub figures and analyses
 
-This repository provides a structured template for setting up new research analysis in Ersilia.
+Code, data, and figures for the Ersilia Model Hub paper.
 
-## Background
+## Project motivation and goal
 
-Replace this paragraph with a short description of the project. This description should explain the background or context of the project, specifying collaborators.
+[Ersilia](https://ersilia.io/) is a tech-nonprofit developing open-source tools to support infectious and neglected disease research in the Global South. Our flagship resource, the [Ersilia Model Hub](https://github.com/ersilia-os/ersilia), is a collection of ready-to-use AI/ML models for drug discovery - covering tasks such as molecular property prediction, bioactivity scoring, and ADMET profiling. Models can be browsed at [ersilia.io/tools](https://ersilia.io/tools/) and used via a unified CLI described in the [Ersilia Book](https://ersilia.gitbook.io/ersilia-book/ersilia-model-hub/getting-started).
+
+This repository contains the data, analyses, and figures used for the Ersilia Model Hub paper (INSERT LINK OF PUBLICATION). Several analyses are based on the [Ersilia reference set of compounds](https://github.com/ersilia-os/ersilia-model-hub-maintained-inputs), and precalculated model outputs are stored and retrieved via [Isaura](https://github.com/ersilia-os/isaura), Ersilia's precalculation store built on top of S3-compatible object storage.
 
 ## Tracking details
 
-Data artifacts (`data/`, `output/`) are synced to S3 via [eosvc](https://github.com/ersilia-os/eosvc) and are not stored in Git. Access rules are defined in `access.json` at the repo root.
+- **Git** (this GitHub repository): `src/`, `scripts/`, `notebooks/`, `assets/`, `docs/`, `tools/`
+- **eosvc** (S3 storage, not tracked by Git): `data/`, `output/`
+
+Access rules for [eosvc](https://github.com/ersilia-os/eosvc) are defined in `access.json` at the repo root.
 
 ## Repository structure
 
 This repository is organized as follows:
 
 ```
-eos-analysis-template/
+ersilia-model-hub-paper/
 │
 ├── LICENSE
 ├── README.md
@@ -57,20 +62,13 @@ eos-analysis-template/
 - **src/** → Core source code and reusable modules  
 - **tools/** → Helper utilities and development tools  
 - **docs/** → Project documentation and reports  
-- **tmp/** → Temporary files or intermediate outputs  
-- **.git/** → Git metadata (version control)  
+- **tmp/** → Temporary files or intermediate outputs
 
 ---
 
 📌 Empty folders are preserved with `.gitkeep` files so the structure remains consistent in Git.
 
 ---
-
-## Project motivation and goal
-
-[Ersilia](https://ersilia.io/) is a tech-nonprofit developing open-source tools to support infectious and neglected disease research in the Global South. Our flagship resource, the [Ersilia Model Hub](https://github.com/ersilia-os/ersilia), is a collection of ready-to-use AI/ML models for drug discovery - covering tasks such as molecular property prediction, bioactivity scoring, and ADMET profiling. Models can be browsed at [ersilia.io/tools](https://ersilia.io/tools/) and used via a unified CLI described in the [Ersilia Book](https://ersilia.gitbook.io/ersilia-book/ersilia-model-hub/getting-started).
-
-This repository contains the data, analyses, and figures used for the Ersilia Model Hub paper (INSERT LINK OF PUBLICATION). Several analyses are based on the [Ersilia reference set of compounds](https://github.com/ersilia-os/ersilia-model-hub-maintained-inputs), and precalculated model outputs are stored and retrieved via [Isaura](https://github.com/ersilia-os/isaura), Ersilia's precalculation store built on top of S3-compatible object storage.
 
 ## 🚀 Getting Started
 
@@ -80,6 +78,14 @@ cd ersilia-model-hub-paper
 conda create -n ersiliapaper python=3.10
 conda activate ersiliapaper
 pip install -r requirements.txt
+```
+
+## Utilities
+
+- **`scripts/download_reference.py`** — downloads the Ersilia reference library and fetches precalculated Isaura outputs for a given model. Output is saved to `data/raw/isaura/` following the naming convention `emh_paper_<model_id>_<version>.csv`:
+
+```bash
+python scripts/download_reference.py --model eos42ez --version v1
 ```
 
 ## Using this repository
