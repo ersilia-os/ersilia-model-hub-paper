@@ -24,6 +24,8 @@ eos-analysis-template/
 │
 ├── data/
 │   ├── raw/
+│   │   ├── compounds/
+│   │   └── isaura/
 │   └── processed/
 │
 ├── scripts/
@@ -42,8 +44,10 @@ eos-analysis-template/
 ```
 
 - **data/**
-  - **raw/** → Original, untouched datasets  
-  - **processed/** → Cleaned and transformed datasets  
+  - **raw/** → Original, untouched datasets
+    - **compounds/** → Compound sets used as model inputs (e.g. Ersilia reference library)
+    - **isaura/** → Precalculated model outputs downloaded from Isaura
+  - **processed/** → Cleaned and transformed datasets
 - **scripts/** → Standalone scripts for preprocessing or automation  
 - **notebooks/** → Jupyter notebooks for exploration and prototyping  
 - **assets/** → Images, figures, and other static resources  
@@ -64,29 +68,29 @@ eos-analysis-template/
 
 ## Project motivation and goal
 
-Write a brief description about the scientific motivation and goal of the project. 
+[Ersilia](https://ersilia.io/) is a tech-nonprofit developing open-source tools to support infectious and neglected disease research in the Global South. Our flagship resource, the [Ersilia Model Hub](https://github.com/ersilia-os/ersilia), is a collection of ready-to-use AI/ML models for drug discovery - covering tasks such as molecular property prediction, bioactivity scoring, and ADMET profiling. Models can be browsed at [ersilia.io/tools](https://ersilia.io/tools/) and used via a unified CLI described in the [Ersilia Book](https://ersilia.gitbook.io/ersilia-book/ersilia-model-hub/getting-started).
+
+This repository contains the data, analyses, and figures used for the Ersilia Model Hub paper (INSERT LINK OF PUBLICATION). Several analyses are based on the [Ersilia reference set of compounds](https://github.com/ersilia-os/ersilia-model-hub-maintained-inputs), and precalculated model outputs are stored and retrieved via [Isaura](https://github.com/ersilia-os/isaura), Ersilia's precalculation store built on top of S3-compatible object storage.
 
 ## 🚀 Getting Started
 
-1. **Clone this repository**  
-   ```bash
-   git clone <your-repo-url>
-   cd eos-analysis-template
-  ```
+```bash
+git clone https://github.com/ersilia-os/ersilia-model-hub-paper
+cd ersilia-model-hub-paper
+conda create -n ersiliapaper python=3.10
+conda activate ersiliapaper
+pip install -r requirements.txt
+```
 
 ## Using this repository
 
 Data and outputs are not stored in Git. Use `eosvc` to sync them from S3.
 
-**Install:**
-```bash
-pip install -r requirements.txt
-```
-
 **Set up credentials** (skip if accessing public data only):
 ```bash
 eosvc config --access-key-id "..." --secret-access-key "..." --region "eu-central-2"
 ```
+For further details see the [eosvc repository](https://github.com/ersilia-os/eosvc).
 
 **Download data:**
 ```bash
