@@ -156,7 +156,7 @@ def download_ersilia_metadata(output_csv: str = None) -> str:
     ----------
     output_csv : str, optional
         Destination path for the CSV file. Defaults to
-        data/raw/ersilia_metadata.csv.
+        data/raw/YYYYMMDD_ersilia_metadata.csv (today's date).
 
     Returns
     -------
@@ -170,8 +170,10 @@ def download_ersilia_metadata(output_csv: str = None) -> str:
     import requests
 
     if output_csv is None:
+        import datetime
         os.makedirs(DEFAULT_METADATA_DIR, exist_ok=True)
-        output_csv = os.path.join(DEFAULT_METADATA_DIR, "ersilia_metadata.csv")
+        date_str = datetime.date.today().strftime("%Y%m%d")
+        output_csv = os.path.join(DEFAULT_METADATA_DIR, f"{date_str}_ersilia_metadata.csv")
 
     session = requests.Session()
     session.headers.update({

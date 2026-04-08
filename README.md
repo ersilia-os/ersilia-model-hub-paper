@@ -29,7 +29,7 @@ ersilia-model-hub-paper/
 │   ├── raw/
 │   │   ├── compounds/
 │   │   ├── isaura/
-│   │   └── ersilia_metadata.csv
+│   │   └── YYYYMMDD_ersilia_metadata.csv
 │   └── processed/
 │
 ├── scripts/
@@ -87,7 +87,7 @@ pip install -r requirements.txt
 python scripts/download_reference.py --model eos42ez --version v1
 ```
 
-- **`scripts/download_ersilia_metadata.py`** — downloads Ersilia model metadata from the public Airtable base and saves it to `data/raw/ersilia_metadata.csv`:
+- **`scripts/download_ersilia_metadata.py`** — downloads Ersilia model metadata from the public Airtable base and saves it to `data/raw/YYYYMMDD_ersilia_metadata.csv`:
 
 ```bash
 python scripts/download_ersilia_metadata.py

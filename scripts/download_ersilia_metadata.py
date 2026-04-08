@@ -13,14 +13,17 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.utils import DEFAULT_METADATA_DIR, download_ersilia_metadata
+import datetime
 
-DEFAULT_OUTPUT = os.path.join(DEFAULT_METADATA_DIR, "ersilia_metadata.csv")
+from src.utils import DEFAULT_METADATA_DIR, download_ersilia_metadata
 
 
 def main():
+    date_str = datetime.date.today().strftime("%Y%m%d")
+    default_output = os.path.join(DEFAULT_METADATA_DIR, f"{date_str}_ersilia_metadata.csv")
+
     parser = argparse.ArgumentParser(description="Download Ersilia model metadata from Airtable.")
-    parser.add_argument("--output", default=DEFAULT_OUTPUT, help="Output CSV path")
+    parser.add_argument("--output", default=default_output, help="Output CSV path")
     parser.add_argument("--force", action="store_true", help="Re-download even if file already exists")
     args = parser.parse_args()
 
