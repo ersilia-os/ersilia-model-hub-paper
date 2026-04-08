@@ -4,8 +4,6 @@ Code, data, and figures for the Ersilia Model Hub paper.
 
 ## Project motivation and goal
 
-[Ersilia](https://ersilia.io/) is a tech-nonprofit developing open-source tools to support infectious and neglected disease research in the Global South. Our flagship resource, the [Ersilia Model Hub](https://github.com/ersilia-os/ersilia), is a collection of ready-to-use AI/ML models for drug discovery - covering tasks such as molecular property prediction, bioactivity scoring, and ADMET profiling. Models can be browsed at [ersilia.io/tools](https://ersilia.io/tools/) and used via a unified CLI described in the [Ersilia Book](https://ersilia.gitbook.io/ersilia-book/ersilia-model-hub/getting-started).
-
 This repository contains the data, analyses, and figures used for the Ersilia Model Hub paper (INSERT LINK OF PUBLICATION). Several analyses are based on the [Ersilia reference set of compounds](https://github.com/ersilia-os/ersilia-model-hub-maintained-inputs), and precalculated model outputs are stored and retrieved via [Isaura](https://github.com/ersilia-os/isaura), Ersilia's precalculation store built on top of S3-compatible object storage.
 
 ## Tracking details
@@ -30,7 +28,8 @@ ersilia-model-hub-paper/
 ├── data/
 │   ├── raw/
 │   │   ├── compounds/
-│   │   └── isaura/
+│   │   ├── isaura/
+│   │   └── ersilia_metadata.csv
 │   └── processed/
 │
 ├── scripts/
@@ -75,17 +74,23 @@ ersilia-model-hub-paper/
 ```bash
 git clone https://github.com/ersilia-os/ersilia-model-hub-paper
 cd ersilia-model-hub-paper
-conda create -n ersiliapaper python=3.10
+conda create -n ersiliapaper python=3.10 -y
 conda activate ersiliapaper
 pip install -r requirements.txt
 ```
 
 ## Utilities
 
-- **`scripts/download_reference.py`** — downloads the Ersilia reference library and fetches precalculated Isaura outputs for a given model. Output is saved to `data/raw/isaura/` following the naming convention `emh_paper_<model_id>_<version>.csv`:
+- **`scripts/download_reference.py`** — downloads the Ersilia reference library and fetches precalculated Isaura outputs for a given model from the cloud. Output is saved to `data/raw/isaura/` following the naming convention `emh_paper_<model_id>_<version>.csv`:
 
 ```bash
 python scripts/download_reference.py --model eos42ez --version v1
+```
+
+- **`scripts/download_ersilia_metadata.py`** — downloads Ersilia model metadata from the public Airtable base and saves it to `data/raw/ersilia_metadata.csv`:
+
+```bash
+python scripts/download_ersilia_metadata.py
 ```
 
 ## Using this repository

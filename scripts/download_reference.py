@@ -3,7 +3,7 @@
 Usage
 -----
     python scripts/download_reference.py --model eos42ez
-    python scripts/download_reference.py --model eos42ez --version v2
+    python scripts/download_reference.py --model eos42ez --version v1
     python scripts/download_reference.py --model eos42ez --force
 """
 
@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--version", default="v1", help="Model version (default: v1)")
     parser.add_argument("--bucket", default="isaura-public", help="Isaura bucket (default: isaura-public)")
     parser.add_argument("--force", action="store_true", help="Re-download reference library even if cached")
+    parser.add_argument("--local", action="store_true", help="Use local MinIO instead of cloud (default: cloud)")
     args = parser.parse_args()
 
     # Step 1: reference library
@@ -44,6 +45,7 @@ def main():
         model_version=args.version,
         input_csv=REFERENCE_LIBRARY_CSV,
         bucket=args.bucket,
+        cloud=not args.local,
     )
     print(f"  -> {output_csv}")
 
