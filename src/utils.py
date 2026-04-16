@@ -134,6 +134,11 @@ def download_reference_library(
     urllib.request.urlretrieve(_REFERENCE_LIBRARY_URL, tmp)
     df = pd.read_csv(tmp)
     df = df.rename(columns={"standardized_smiles": "input"})
+    n_before = len(df)
+    df = df.drop_duplicates(subset=["input"])
+    n_dropped = n_before - len(df)
+    if n_dropped:
+        print(f"  Removed {n_dropped} duplicate SMILES from reference library.")
     df.to_csv(output_csv, index=False)
     os.remove(tmp)
     return output_csv
