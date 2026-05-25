@@ -4,3 +4,6 @@ git+https://github.com/ersilia-os/eosframes.git@v1.0.1
 pandas==2.3.0
 stylia==1.0.1
 requests==2.32.3
+circlify==0.15.1
+h5py==3.13.0
+scikit-learn==1.8.0

@@ -1,10 +1,11 @@
-"""Download Ersilia Model Hub metadata from the public Airtable base.
+"""Analyse Ersilia Model Hub metadata and plot summary statistics.
+
+Requires data/raw/airtable_metadata.csv (run 00_download_data.py first).
 
 Output
 ------
-    output/00_models_metadata/airtable_metadata.csv
-    output/00_models_metadata/*_counts.csv
-    output/00_models_metadata/*.png
+    output/01_models_metadata/*_counts.csv
+    output/01_models_metadata/*.png
 """
 
 import os
@@ -18,17 +19,10 @@ import matplotlib.patches as mpatches
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root, "..", "src"))
 
-from utils import download_airtable_metadata
-
-
-outpath = os.path.join(root, "..", "output", "00_models_metadata")
+outpath = os.path.join(root, "..", "output", "01_models_metadata")
 os.makedirs(outpath, exist_ok=True)
 
-if not os.path.exists(os.path.join(outpath, "airtable_metadata.csv")):
-    df = download_airtable_metadata()
-    df.to_csv(os.path.join(outpath, "airtable_metadata.csv"), index=False)
-
-df = pd.read_csv(os.path.join(outpath, "airtable_metadata.csv"), encoding="utf-8-sig")
+df = pd.read_csv(os.path.join(root, "..", "data", "raw", "airtable_metadata.csv"), encoding="utf-8-sig")
 print(len(df))
 df = df[df["Status"] == "Ready"]
 print(len(df))
