@@ -1,13 +1,16 @@
 """Visualise ChEMBL antimicrobial model performance per pathogen.
 
 For each pathogen subdirectory in data/raw/chembl_model_reports/, loads all
-per-model CSVs (5-fold cross-validation reports), computes mean ± std AUROC,
-and produces two plots: one ROC curve per model in a subplot grid (all folds
-concatenated, coloured by mean AUROC) and horizontal paired rank boxplots (fold 0).
+per-model reports (5-fold cross-validation), computes mean ± std AUROC, and
+produces two plots: one ROC curve per model in a subplot grid (all folds
+concatenated, coloured by mean AUROC) and horizontal paired rank boxplots
+(all folds pooled). Per-fold AUROC comes from each {name}.csv; the per-compound
+probability and rank arrays come from the matching {name}_folds.json sidecar.
 
 Requires
 --------
-    data/raw/chembl_model_reports/{pathogen}/*.csv
+    data/raw/chembl_model_reports/{pathogen}/{name}.csv
+    data/raw/chembl_model_reports/{pathogen}/{name}_folds.json
 
 Outputs
 -------
@@ -16,6 +19,7 @@ Outputs
     output/02_chembl_models_performance/{pathogen}_rank_boxplots.png
 """
 
+import json
 import math
 import os
 import sys
@@ -39,11 +43,15 @@ stylia.set_style("article")
 
 
 def load_models(pathogen_dir):
-    """Load all model CSVs in a pathogen directory.
+    """Load all model reports in a pathogen directory.
+
+    Per-fold summary metrics come from each {name}.csv; the per-compound
+    probability and rank arrays come from the matching {name}_folds.json
+    sidecar (keyed by fold, each with y_true / y_hat / y_rank).
 
     Returns a list of dicts, one per model:
         name, mean_auroc, std_auroc, y_true, y_pred,
-        rank_actives (fold 0), rank_inactives (fold 0)
+        rank_actives, rank_inactives   (all folds pooled, out-of-fold)
     """
     models = []
     for fname in sorted(os.listdir(pathogen_dir)):
@@ -56,34 +64,42 @@ def load_models(pathogen_dir):
             print(f"  [SKIP] {fname}: {e}")
             continue
 
-        required = {"model_name", "fold", "auroc",
-                    "predict_proba_actives", "predict_proba_inactives",
-                    "predict_rank_actives", "predict_rank_inactives"}
+        required = {"model_name", "fold", "auroc"}
         if not required.issubset(df.columns):
             print(f"  [SKIP] {fname}: missing required columns")
             continue
+
+        folds_path = os.path.join(pathogen_dir, f"{fname[:-4]}_folds.json")
+        if not os.path.exists(folds_path):
+            print(f"  [SKIP] {fname}: missing {os.path.basename(folds_path)}")
+            continue
+        with open(folds_path) as fh:
+            folds = json.load(fh)
 
         model_name = df["model_name"].iloc[0]
         mean_auroc = df["auroc"].mean()
         std_auroc = df["auroc"].std()
 
-        y_true_all, y_pred_all = [], []
-        for _, row in df.iterrows():
-            actives = np.array(row["predict_proba_actives"].split(";"), dtype=float)
-            inactives = np.array(row["predict_proba_inactives"].split(";"), dtype=float)
-            y_true_all.extend([1] * len(actives) + [0] * len(inactives))
-            y_pred_all.extend(actives.tolist() + inactives.tolist())
+        # Pool per-compound predictions across all folds; each compound is
+        # held out (out-of-fold) exactly once.
+        y_true, y_hat, y_rank = [], [], []
+        for fd in folds.values():
+            y_true.extend(fd["y_true"])
+            y_hat.extend(fd["y_hat"])
+            y_rank.extend(fd["y_rank"])
+        y_true = np.asarray(y_true)
+        y_hat = np.asarray(y_hat, dtype=float)
+        y_rank = np.asarray(y_rank, dtype=float)
 
-        fold0 = df[df["fold"] == 0].iloc[0]
-        rank_actives = np.array(fold0["predict_rank_actives"].split(";"), dtype=float)
-        rank_inactives = np.array(fold0["predict_rank_inactives"].split(";"), dtype=float)
+        rank_actives = y_rank[y_true == 1]
+        rank_inactives = y_rank[y_true == 0]
 
         models.append({
             "name": model_name,
             "mean_auroc": mean_auroc,
             "std_auroc": std_auroc,
-            "y_true": y_true_all,
-            "y_pred": y_pred_all,
+            "y_true": y_true.tolist(),
+            "y_pred": y_hat.tolist(),
             "rank_actives": rank_actives,
             "rank_inactives": rank_inactives,
         })
@@ -91,9 +107,12 @@ def load_models(pathogen_dir):
     return models
 
 
+# "10_reports" is the aggregated-summary subdir staged by 00_download_data.py,
+# not a pathogen — exclude it from the per-pathogen iteration.
+NON_PATHOGEN_DIRS = {"10_reports"}
 pathogens = sorted(
     d for d in os.listdir(reports_dir)
-    if os.path.isdir(os.path.join(reports_dir, d))
+    if os.path.isdir(os.path.join(reports_dir, d)) and d not in NON_PATHOGEN_DIRS
 )
 
 if not pathogens:

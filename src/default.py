@@ -1,4 +1,7 @@
 
+# Project-wide random seed for any stochastic step (sampling, jitter, splits).
+RANDOM_SEED = 42
+
 AIRTABLE_SHARE_URL = (
     "https://airtable.com/appR6ZwgLgG8RTdoU/shr7scXQV3UYqnM6Q/tblAfOWRbA7bI1VTB"
 )
@@ -16,6 +19,26 @@ DRUGBANK_URL = (
 )
 
 COADD_MODEL_ID = "eos3dys"
+
+# Maps each model Subtask to its parent Task, so subtasks can inherit the parent
+# task's colour in the metadata figures.
+SUBTASK_PARENT = {
+    "Activity prediction": "Annotation",
+    "Property calculation or prediction": "Annotation",
+    "Featurization": "Representation",
+    "Projection": "Representation",
+    "Similarity search": "Sampling",
+    "Generation": "Sampling",
+}
+
+# Shorter display labels for crowded metadata figure axes.
+SUBTASK_DISPLAY = {
+    "Property calculation or prediction": "Property prediction",
+}
+BIOAREA_DISPLAY = {
+    "Antimicrobial resistance": "AMR",
+    "Diarrheal diseases": "Diarrhoea",
+}
 
 ERSILIA_MODEL_IDS = {
     "abaumannii":"eos21dr",

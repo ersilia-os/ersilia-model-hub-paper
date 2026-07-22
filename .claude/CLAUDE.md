@@ -28,6 +28,10 @@ This is the by-default structure of the repository. Not all folders are mandator
 
 - All Python plotting should strictly use the [stylia](https://github.com/ersilia-os/stylia) library. Invoke the `/stylia-plotting` skill for guidance on how to use it. If the skill is not installed, ask the user to install it, or guide them through installation. Ersilia skills are available at [https://github.com/ersilia-os/ersilia-skills].
 
+- **Publication figures follow a fixed format** — full guide in `docs/figure_conventions.md`, reference implementation `src/plotting_base.py`. Every figure is an **individual** panel (one chart per file, no composite dashboards, **no A/B/C panel letters** — panels are arranged later in Illustrator), built as a `BasePlot` subclass sized on a **3 cm square-cell grid** (`CELLS_PER_WIDTH = 6` over stylia's 180 mm `print` width; a `cells=(rows, cols)` footprint → `cols/6 × rows/6` of 180 mm; Nature page = 180 × 215 mm ≈ 6 × 7.2 cells), and saved as **both** a raster PNG and a **vector PDF** into `png/` + `pdf/` subfolders plus a `figure_cells.json` footprint manifest. This dual-format rule **overrides** the generic `/stylia-plotting` skill's "PNG by default". Colours come from `src/plotting_colors.py` (never hardcode hex).
+
+- **Feed figures from summary CSVs, not raw datasets.** A figure's data must come from a small pre-aggregated CSV; if the needed summary doesn't exist in the source repo, create it there (a small export) and stage only that via `scripts/00_download_data.py` — never copy full per-molecule datasets into this repo.
+
 - Scripts in `scripts/` must be numbered sequentially (`01_preprocess.py`, `02_train.py`, ...) and outputs in `output/` should follow the same numbering.
 
 - Do **not** create new folders at the root level outside the ones listed above.

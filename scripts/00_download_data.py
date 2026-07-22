@@ -28,6 +28,10 @@ Outputs
     data/raw/euopenscreen_tasks/primary_assays_manual.csv
     data/raw/euopenscreen_tasks/06_subset_data/exclusivity/{code}_{exclusive,nonexclusive}.csv
     data/raw/euopenscreen_tasks/06_subset_data/secondary/{code}_secondary.csv
+    data/raw/chembl_model_reports/{pathogen}/{name}.csv           (per-fold CV reports)
+    data/raw/chembl_model_reports/{pathogen}/{name}_folds.json
+    data/raw/chembl_model_reports/10_reports/10_reports.csv       (aggregated summary)
+    data/raw/chembl_model_reports/10_reports/10_discarded_models.csv
     data/raw/compound_lists/reference_library_smiles.csv
     data/raw/compound_lists/drugbank_smiles.csv
     data/raw/airtable_metadata.csv
@@ -112,6 +116,12 @@ def copy_from_repo(repo_name, src_dir, dst_dir, include_fn=None, rename_fn=None,
         )
         return
     src_path = os.path.join(repo_path, src_dir)
+    if not os.path.isdir(src_path):
+        print(
+            f"  [SKIP] {src_dir} not found in {repo_name} at {src_path}\n"
+            f"         Source not published yet — keeping any existing cached copy."
+        )
+        return
     if recursive:
         for subdir in sorted(os.listdir(src_path)):
             if not os.path.isdir(os.path.join(src_path, subdir)):
@@ -154,6 +164,24 @@ def download_from_eosvc(eosvc_path, dst_dir):
 # data/config/eu-openscreen_preds_h5/. When published in a companion repo or
 # eosvc, add an entry here.
 
+# Whitelist of per-pathogen curation summary CSVs staged from chembl-antimicrobial-tasks
+# (output/stage4/<pathogen>/). These are per-assay / per-pool SUMMARY tables, not the full
+# per-molecule datasets — sufficient to rebuild the curation figures without copying ~1 GB.
+_CURATION_SUMMARY_FILES = {
+    "21_curation_summary.csv",
+    "21_curation_stats.csv",
+    "21_curation_categories.csv",
+    "22_binarisation_summary.csv",
+    "22_cutoff_sensitivity.csv",
+    "23_pool_summary.csv",
+    "23_chemspace_partition.csv",
+    "23_first_pass.csv",
+    "24_cv_summary.csv",
+    "25_pool_summary.csv",
+    "25_merge_log.csv",
+    "26_cv_summary.csv",
+}
+
 SECTION1_SOURCES = [
     {
         "description": "EU OpenScreen antimicrobial tasks — merged",
@@ -186,7 +214,7 @@ SECTION1_SOURCES = [
         "recursive": True,
     },
     {
-        "description": "ChEMBL antimicrobial model reports",
+        "description": "ChEMBL antimicrobial model reports — per-fold CV",
         "repo": "chembl-antimicrobial-models",
         "src_dir": "output/09_reports",
         "dst_dir": os.path.join(raw_dir, "chembl_model_reports"),
@@ -194,11 +222,44 @@ SECTION1_SOURCES = [
         "recursive": True,
     },
     {
+        "description": "ChEMBL antimicrobial model reports — aggregated summary",
+        "repo": "chembl-antimicrobial-models",
+        "src_dir": "output/10_reports",
+        "dst_dir": os.path.join(raw_dir, "chembl_model_reports", "10_reports"),
+        "eosvc_path": "data/raw/chembl_model_reports/10_reports",
+        "include": lambda f: f.endswith(".csv"),  # top-level CSVs only; skips plots/
+    },
+    {
         "description": "CoAdd binary task training data",
         "repo": "coadd-binary-tasks",
         "src_dir": "data/processed/coadd/05_binarised_mic",
         "dst_dir": os.path.join(raw_dir, "coadd_training"),
         "eosvc_path": "data/raw/coadd_training",
+    },
+    # ChEMBL data-curation summaries (chembl-antimicrobial-tasks, Stage 4). Only the small
+    # per-pathogen and aggregate SUMMARY CSVs are copied — never the full cleaned/binarised
+    # molecule datasets — so the curation figures (xx_chembl_data_curation.py) are rebuilt
+    # from summaries alone (~40 MB total). See _CURATION_SUMMARY_FILES for the whitelist.
+    {
+        "description": "ChEMBL curation — per-pathogen step 21-26 summaries",
+        "repo": "chembl-antimicrobial-tasks",
+        "src_dir": "output/stage4",
+        "dst_dir": os.path.join(raw_dir, "chembl_curation"),
+        "eosvc_path": "data/raw/chembl_curation",
+        "recursive": True,
+        "include": lambda f: f in _CURATION_SUMMARY_FILES,
+    },
+    {
+        "description": "ChEMBL curation — step 27 aggregate tables",
+        "repo": "chembl-antimicrobial-tasks",
+        "src_dir": "output/stage4/general_plots",
+        "dst_dir": os.path.join(raw_dir, "chembl_curation", "general"),
+        "eosvc_path": "data/raw/chembl_curation/general",
+        "include": lambda f: f in {
+            "27_master_table.csv", "27_cutoff_sensitivity.csv",
+            "27_final_data_overlap.csv", "27_chembl_space.json",
+            "27_chembl_coverage.csv",
+        },
     },
 ]
 
@@ -211,6 +272,7 @@ for source in SECTION1_SOURCES:
     print(f"\n{source['description']}...")
     if args.eosvc:
         download_from_eosvc(source["eosvc_path"], source["dst_dir"])
+
     else:
         copy_from_repo(
             repo_name=source["repo"],
@@ -314,7 +376,6 @@ else:
     df_meta.to_csv(meta_path, index=False)
     print(f"  -> {meta_path} ({len(df_meta)} models)")
 
-"""
 # =============================================================================
 # Section 4 — Isaura
 # =============================================================================
@@ -336,8 +397,6 @@ for _, row in annotation_models.iterrows():
         continue
     version = str(version).strip()
     isaura_version = version.split(".")[0]
-    if model_id in ("eos21q7", "eos1lb5", "eos7ye0", "eos9ivc"):
-        isaura_version = "v1"
     output_csv = os.path.join(annotation_dir, f"{model_id}_{isaura_version}.csv")
     if os.path.exists(output_csv):
         print(f"  Already exists: {model_id} {isaura_version}")
@@ -400,4 +459,3 @@ if incomplete:
         print(f"  {model_id} {ver}: {n_pred}/{n_ref} compounds ({n_missing} missing)")
 else:
     print("All available prediction files cover the full reference library.")
-"""

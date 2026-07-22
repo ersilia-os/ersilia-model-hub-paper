@@ -26,10 +26,10 @@ def download_from_isaura(
     compress: bool = False,
     cloud: bool = True,
 ) -> str:
-    """Download precalculated model outputs from Isaura into data/raw/isaura/.
+    """Download precalculated model outputs from Isaura into output_path.
 
-    Output files follow the eosframes naming convention
-    prefix: <model_id>_<version>.csv (e.g. emh_paper_eos8a4x_v1.csv).
+    The output file is named <model_id>_<model_version>.csv
+    (e.g. eos8a4x_v1.csv), or with a .gz suffix when compress=True.
 
     Parameters
     ----------
@@ -39,10 +39,10 @@ def download_from_isaura(
         Model version string (e.g. 'v1').
     input_csv : str
         Path to CSV file containing the input compounds (SMILES or InChIKey).
+    output_path : str
+        Destination directory for the output CSV (.gz if compress=True).
     bucket : str
         Isaura bucket name. Defaults to 'isaura-public'.
-    output_csv : str, optional
-        Destination path for the output CSV.(.gz if compress=True).
     approximate : bool
         Whether to use approximate nearest-neighbour search for unseen inputs.
     compress : bool
