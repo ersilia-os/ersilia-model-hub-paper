@@ -23,11 +23,14 @@ Usage
 
 Outputs
 -------
-    data/raw/euopenscreen_tasks/02_merged/{code}.csv    (one per pathogen)
-    data/raw/euopenscreen_tasks/02_binarised_assays/{assay_id}.csv
-    data/raw/euopenscreen_tasks/primary_assays_manual.csv
-    data/raw/euopenscreen_tasks/06_subset_data/exclusivity/{code}_{exclusive,nonexclusive}.csv
-    data/raw/euopenscreen_tasks/06_subset_data/secondary/{code}_secondary.csv
+    data/raw/euopenscreen_data/02_merged/{code}.csv    (one per pathogen)
+    data/raw/euopenscreen_data/02_binarised_assays/{assay_id}.csv
+    data/raw/euopenscreen_data/primary_assays_manual.csv
+    data/raw/euopenscreen_data/06_subset_data/exclusivity/{code}_{exclusive,nonexclusive}.csv
+    data/raw/euopenscreen_data/06_subset_data/secondary/{code}_secondary.csv
+    data/raw/coadd_data/00_smiles_info.csv                        (CoAdd screening library SMILES)
+    data/raw/coadd_data/03_binarised_inhibition/{strain}.csv
+    data/raw/coadd_data/05_binarised_mic/{strain}.csv
     data/raw/chembl_model_reports/{pathogen}/{name}.csv           (per-fold CV reports)
     data/raw/chembl_model_reports/{pathogen}/{name}_folds.json
     data/raw/chembl_model_reports/10_reports/10_reports.csv       (aggregated summary)
@@ -70,6 +73,11 @@ parser.add_argument(
     "--eosvc",
     action="store_true",
     help="Pull Section 1 data from eosvc storage instead of companion repos.",
+)
+parser.add_argument(
+    "--skip-isaura",
+    action="store_true",
+    help="Skip Section 4 (Isaura precalc predictions) and the validation summary — much faster.",
 )
 args = parser.parse_args()
 
@@ -161,7 +169,7 @@ def download_from_eosvc(eosvc_path, dst_dir):
 #   rename      : (optional) callable(filename) → str, renames files on copy
 #
 # NOTE: EU OpenScreen H5 prediction files are currently placed manually in
-# data/config/eu-openscreen_preds_h5/. When published in a companion repo or
+# config/eu-openscreen_preds_h5/. When published in a companion repo or
 # eosvc, add an entry here.
 
 # Whitelist of per-pathogen curation summary CSVs staged from chembl-antimicrobial-tasks
@@ -187,30 +195,30 @@ SECTION1_SOURCES = [
         "description": "EU OpenScreen antimicrobial tasks — merged",
         "repo": "eu-openscreen-antimicrobial-tasks",
         "src_dir": "data/processed/02_merged",
-        "dst_dir": os.path.join(raw_dir, "euopenscreen_tasks", "02_merged"),
-        "eosvc_path": "data/raw/euopenscreen_tasks/02_merged",
+        "dst_dir": os.path.join(raw_dir, "euopenscreen_data", "02_merged"),
+        "eosvc_path": "data/raw/euopenscreen_data/02_merged",
     },
     {
         "description": "EU OpenScreen antimicrobial tasks — binarised assays",
         "repo": "eu-openscreen-antimicrobial-tasks",
         "src_dir": "data/processed/02_binarised_assays",
-        "dst_dir": os.path.join(raw_dir, "euopenscreen_tasks", "02_binarised_assays"),
-        "eosvc_path": "data/raw/euopenscreen_tasks/02_binarised_assays",
+        "dst_dir": os.path.join(raw_dir, "euopenscreen_data", "02_binarised_assays"),
+        "eosvc_path": "data/raw/euopenscreen_data/02_binarised_assays",
     },
     {
         "description": "EU OpenScreen primary assays manual annotation",
         "repo": "eu-openscreen-antimicrobial-tasks",
         "src_dir": "data/config",
-        "dst_dir": os.path.join(raw_dir, "euopenscreen_tasks"),
-        "eosvc_path": "data/raw/euopenscreen_tasks",
+        "dst_dir": os.path.join(raw_dir, "euopenscreen_data"),
+        "eosvc_path": "data/raw/euopenscreen_data",
         "include": lambda f: f == "primary_assays_manual.csv",
     },
     {
         "description": "EU OpenScreen subset data (exclusive/non-exclusive/secondary)",
         "repo": "eu-openscreen-antimicrobial-tasks",
         "src_dir": "output/06_subset_data",
-        "dst_dir": os.path.join(raw_dir, "euopenscreen_tasks", "06_subset_data"),
-        "eosvc_path": "data/raw/euopenscreen_tasks/06_subset_data",
+        "dst_dir": os.path.join(raw_dir, "euopenscreen_data", "06_subset_data"),
+        "eosvc_path": "data/raw/euopenscreen_data/06_subset_data",
         "recursive": True,
     },
     {
@@ -229,16 +237,38 @@ SECTION1_SOURCES = [
         "eosvc_path": "data/raw/chembl_model_reports/10_reports",
         "include": lambda f: f.endswith(".csv"),  # top-level CSVs only; skips plots/
     },
+    # CoAdd binarised task data, staged into per-type subfolders because
+    # 03_binarised_inhibition and 05_binarised_mic share 12 per-strain filenames
+    # and would collide if flattened into one directory.
     {
-        "description": "CoAdd binary task training data",
+        "description": "CoAdd binarised inhibition tasks",
+        "repo": "coadd-binary-tasks",
+        "src_dir": "data/processed/coadd/03_binarised_inhibition",
+        "dst_dir": os.path.join(raw_dir, "coadd_data", "03_binarised_inhibition"),
+        "eosvc_path": "data/raw/coadd_data/03_binarised_inhibition",
+    },
+    {
+        "description": "CoAdd binarised MIC tasks",
         "repo": "coadd-binary-tasks",
         "src_dir": "data/processed/coadd/05_binarised_mic",
-        "dst_dir": os.path.join(raw_dir, "coadd_training"),
-        "eosvc_path": "data/raw/coadd_training",
+        "dst_dir": os.path.join(raw_dir, "coadd_data", "05_binarised_mic"),
+        "eosvc_path": "data/raw/coadd_data/05_binarised_mic",
+    },
+    # Canonical CoAdd screening-library SMILES list (full ~100k compounds, columns
+    # smiles,std_smiles,inchikey,mw). Feeds 04_ersilia_predictions.sh as the CoAdd
+    # prediction library (predict on std_smiles). Distinct from the binarised task
+    # folders above, which cover only the compounds carrying activity labels.
+    {
+        "description": "CoAdd screening library — canonical SMILES list",
+        "repo": "coadd-binary-tasks",
+        "src_dir": "data/processed/coadd",
+        "dst_dir": os.path.join(raw_dir, "coadd_data"),
+        "eosvc_path": "data/raw/coadd_data",
+        "include": lambda f: f == "00_smiles_info.csv",
     },
     # ChEMBL data-curation summaries (chembl-antimicrobial-tasks, Stage 4). Only the small
     # per-pathogen and aggregate SUMMARY CSVs are copied — never the full cleaned/binarised
-    # molecule datasets — so the curation figures (xx_chembl_data_curation.py) are rebuilt
+    # molecule datasets — so the curation figures (02_chembl_data_curation.py) are rebuilt
     # from summaries alone (~40 MB total). See _CURATION_SUMMARY_FILES for the whitelist.
     {
         "description": "ChEMBL curation — per-pathogen step 21-26 summaries",
@@ -380,6 +410,10 @@ else:
 # Section 4 — Isaura
 # =============================================================================
 # Pre-computed model predictions fetched from the Isaura cache.
+
+if args.skip_isaura:
+    print("\n[--skip-isaura] Skipping Section 4 (Isaura predictions) and validation.")
+    sys.exit(0)
 
 print("\nDownloading annotation model predictions for reference library...")
 

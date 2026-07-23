@@ -1,64 +1,54 @@
 # Scripts
 
+Numbered scripts run in order. Figure and plotting conventions (sizing, formats, per-figure
+layouts) live in [`docs/figure_conventions.md`](../docs/figure_conventions.md).
+
 ## 00_download_data.py
-Downloads all input data required by the pipeline: the Ersilia reference library, DrugBank SMILES, Airtable model metadata, and precomputed model outputs from Isaura for all Ready annotation models against the reference library. All 129 annotation model CSVs are saved to `data/processed/annotation_preds_ref_library/`. Downloads are skipped if the output file already exists, so the script is safe to re-run.
-
-**ChEMBL antimicrobial model reports** are staged from the `chembl-antimicrobial-models` sibling repo into `data/raw/chembl_model_reports/`: the per-fold cross-validation reports (`{pathogen}/{name}.csv` + `_folds.json`, from the source's `09_reports`) consumed by `02_chembl_models_performance.py`, plus the aggregated per-model summary (`10_reports/10_reports.csv` and `10_reports/10_discarded_models.csv`, from the source's `10_reports` — CSVs only, the source's rendered plots are not copied). Because the copy step skips files that already exist, clear `data/raw/chembl_model_reports/` before re-staging if the source repo has been re-run with a new model-naming scheme.
-
-All performance metrics reported by the paper (AUROC, AUPRC, BEDROC, per-descriptor OOF AUCs and their mean ± std) are **recomputed from the per-fold `09` reports**, not read from `10_reports.csv`. The `10_reports/` CSVs are kept only as an upstream reference for fields that cannot be reconstructed from `09` — the quality weights (`w1`–`w6`, `final_weight`, `final_normalized_weight`), `decision_cutoff_rank`, `portfolio`, `model_size_total_mb`, and the discarded-model list with its rejection reasons.
-
-**ChEMBL data-curation summaries** are staged from the separate `chembl-antimicrobial-tasks` sibling repo (Stage 4) into `data/raw/chembl_curation/`: only the small per-pathogen and aggregate **summary** CSVs are copied (whitelisted in `_CURATION_SUMMARY_FILES` — `21`–`26` per-pathogen summaries plus `general/27_master_table.csv`, `27_cutoff_sensitivity.csv`, `27_final_data_overlap.csv`, `27_chembl_space.json`, `27_chembl_coverage.csv`), **never** the full cleaned/binarised molecule datasets. ~40 MB total. These feed `xx_chembl_data_curation.py`. The `27_chembl_coverage.csv` file (union of cleaned InChIKeys per pathogen + overall, vs the bioactive-ChEMBL total) is exported by an added `export_chembl_coverage()` step in the source repo's `27_general_plots.py`, so the ChEMBL-coverage donut can be rebuilt here without the full cleaned datasets.
+Stages all input data in four sections: companion repos / eosvc (EU OpenScreen tasks, CoAdd data,
+ChEMBL model reports and curation summaries), public GitHub files (Ersilia reference library,
+DrugBank), Airtable model metadata, and Isaura precalc predictions for Ready annotation models.
+Skip-if-exists, so it is safe to re-run. `--skip-isaura` skips the slow Isaura section; `--eosvc`
+pulls Section 1 from eosvc instead of the companion repos.
+**Key decision:** ChEMBL model performance metrics are recomputed downstream from the per-fold
+`09_reports`; the staged `10_reports/` CSVs are kept only for fields that cannot be reconstructed
+(quality weights, decision cutoffs, discarded-model reasons).
 
 ## 01_ersilia_metadata.py
-Analyses the Airtable model metadata (Ready models only) and renders each summary panel as its own Nature-sized figure — raster PNG (`png/`) + vector PDF (`pdf/`) ready for Illustrator — using the reusable plotting stack in `src/` (`plotting_base`, `plotting_colors`, `plots_metadata`). Six panels are produced: a combined Task/Subtask bar chart, and one bar chart each for Source Type, Output, Biomedical Area and Target Organism, plus a pathogen circle-treemap (one circle per priority pathogen, dots = models coloured by Source Type, sized by output dimension). Value counts for all eight metadata fields are written as `*_counts.csv`. No panel letters (A/B/C) are added — final ordering is decided in Illustrator.
-**Figure sizing:** panels are sized on a 3 cm square-cell grid (`CELLS_PER_WIDTH = 6` over stylia's 180 mm print width). Recorded footprints `(rows, cols)`: Tasks & subtasks `(3,3)`, Source Type `(2,3)`, Output `(3,3)`, Biomedical Area `(4,3)`, Target Organism `(4,3)`, pathogen treemap `(3,3)`. Footprints are also written to `figure_cells.json` for page assembly. Adjust in `save_metadata_figures` (`src/plots_metadata.py`).
-**Fields shown vs counted:** 6 of the 8 counted fields are plotted (Task and Subtask merged into one panel); License and Publication Type are written to CSV but not plotted.
-**Cap:** Biomedical Area and Target Organism are each capped at the top 10 categories in the figure for readability; the full counts remain in their `*_counts.csv`.
+Analyses the Airtable model metadata (Ready models only) and renders each summary field as its own
+figure, plus a pathogen circle-treemap. Value counts for all eight metadata fields are written as
+`*_counts.csv` to `output/01_models_metadata/`.
+**Shown vs counted:** 6 of the 8 counted fields are plotted (Task and Subtask merged into one
+panel); License and Publication Type are counted but not plotted. Biomedical Area and Target
+Organism are capped at the top 10 categories in the figure (full counts remain in the CSVs).
 
-## 02_chembl_models_performance.py
-For each pathogen in `data/raw/chembl_model_reports/`, loads all 5-fold cross-validation report CSVs, computes mean ± std AUROC per model, and generates two plots: a subplot grid with one ROC curve per model (coloured by mean AUROC using FadingColormap cobalt fitted [0.5, 1.0], best model top-left) and horizontal paired rank boxplots (fold 0; actives in turquoise, inactives in crimson). Outputs one summary CSV and two PNGs per pathogen to `output/02_chembl_models_performance/`.
-
-## xx_chembl_data_curation.py
-Reproduces the ChEMBL data-curation story (upstream step 27 of `chembl-antimicrobial-tasks`, `27_general_plots.py`) as individual Nature-sized panels — PNG + vector PDF on the 3 cm cell grid, with a `figure_cells.json` footprint manifest and no A/B/C letters. Rebuilt **entirely from the staged summary CSVs** (`data/raw/chembl_curation/`), so no full molecule-level datasets are needed. Fifteen figures: `chembl_coverage`, `curation_discard`, `chemspace_attrition`, `curation_outcome_legend`, `wholecell_sizes`, `binarisation_active_ratio`, `activity_ratio_flow`, `activity_ratio_per_pathogen`, `cutoff_sensitivity`, `pool_partition`, `pool_active_ratios`, `pool_cv_auroc`, `merge_auroc`, `lowdata_auroc`, `pipeline_funnel`. Left unnumbered (`xx_`) until its place in the figure sequence is fixed.
-
-**Figure sizing for Nature assembly:** panels are sized on the 3 cm cell grid (see `plotting_base`), so PDFs drop straight into a 180 mm-wide layout in Illustrator. Footprints are configured in `save_curation_figures` (`src/plots_chembl_curation.py`) and recorded in `figure_cells.json`. Current layout:
-- **Row 1** — `curation_discard` + `chemspace_attrition` at **2×2 cells (60 mm)** each, per-panel legends omitted; `curation_outcome_legend` (a standalone 60 mm swatch key for the shared curation-outcome taxonomy) is placed once for both. `chemspace_attrition` hides any outcome that removes zero unique molecules across all pathogens — e.g. Co-ADD (which drops only redundant assays); it remains in the shared legend.
-- **Row 2** — `pool_active_ratios` + `pool_cv_auroc` at **3×3 cells (90 mm)** each (two across the 180 mm width). DR and SP are combined into one panel per figure (paired by colour: DR = cobalt, SP = tangerine) so the 15 pathogens stay legible; both show **final pools** (step-25 grown ∪ step-26 catch-all).
-- **Coverage + funnel overlap unit** — `chembl_coverage` and `pipeline_funnel` are each **~45 mm (off-grid, footprint `[1.5, 1.5]`)** and both drawn in **crimson** (the donut's covered slice and the funnel bars encode the same "kept" quantity), intended to be overlapped by hand into a single slot. Coverage therefore no longer sits in row 1.
-- The remaining panels (`wholecell_sizes`, `binarisation_active_ratio`, `activity_ratio_flow`, `activity_ratio_per_pathogen`, `cutoff_sensitivity`, `pool_partition`, `merge_auroc`, `lowdata_auroc`) keep their default footprints, unassigned to a row yet.
-
-Note: `pipeline_funnel` uses a log y-axis with bars drawn from a finite positive baseline (not 0) — a 0 baseline maps to −∞ on a log scale and produces bars that overflow the axes in the vector PDF.
-
+## 02_chembl_data_curation.py
+Reproduces the ChEMBL data-curation story (upstream step 27 of `chembl-antimicrobial-tasks`) as 15
+individual panels, rebuilt **entirely from the staged summary CSVs** in `data/raw/chembl_curation/`
+— no molecule-level data needed. Outputs to `output/02_chembl_data_curation/`.
 **Snapshot:** ChEMBL `chembl_36` (read from `general/27_chembl_space.json`).
-**Included vs discarded, per pathogen — a matched pair:** `curation_discard` (fraction of **assays** retained vs discarded, by reason) and `chemspace_attrition` (fraction of unique-molecule **chemical space** retained vs lost at each stage) share one outcome taxonomy and palette. They differ on purpose: e.g. the `≤5 molecules` filter dominates assay discards but removes comparatively little chemical space, while `qualitative-only` / `superseded by PubChem` dominate chemical-space loss. `chemspace_attrition` reads `chemical_space` from `21_curation_stats.csv`; `curation_discard` reads per-assay rows from `21_curation_summary.csv`.
-**Data/code caveat:** the staged summaries' numeric `discard_step` codes do **not** match the upstream `STEP_LABELS` constant (the data was produced by a different pipeline version). Both figures therefore key on the `discard_reason` **text**, not the step number — otherwise segments are mislabelled and the largest bucket (`≤5 molecules`) is dropped. Both `pool_active_ratios` and `pool_cv_auroc` show **final pools** (step-25 grown ∪ step-26 catch-all), not the step-23/step-24 pools.
-**`chembl_coverage`** (donut: cleaned chemical space vs the full bioactive-ChEMBL total) is rebuilt from `general/27_chembl_coverage.csv`, a small summary exported upstream specifically so the full ChEMBL data need not be copied here (see the staging note above).
-**Not reproduced (need full data, skipped by design):** chemical-space overlap heatmaps, binarisation agreement, eos1klk embeddings, and the molecule-level panels of the curation-retained / target-type / pipeline-fate figures — their aggregated values are never written to the summary CSVs.
-**Inherited parameters (reproduced verbatim from step 27, not newly chosen):** whole-cell dataset **size bins** `≤5 / 5–20 / 20–50 / 50–100 / 100–1000 / >1000` (`SIZE_EDGES`); cutoff **tiers** low/middle/high with the default tier starred (from `is_default`); the **0.70 AUROC** reference line in `pool_cv_auroc` / `merge_auroc` / `lowdata_auroc` (an evaluation reference, not an enforced cutoff); and the **DR/SP** (dose-response / single-point) category split. The curation-outcome segment order/colours come from the local `CURATION_OUTCOME_ORDER` / `CURATION_OUTCOME_COLOR` (keyed on `discard_reason` text — see the caveat above). Points in box overlays are capped at 1000 per box (`CAP_POINTS`); jitter uses `RANDOM_SEED`.
+**Caveat:** the staged summaries' numeric `discard_step` codes do not match the upstream
+`STEP_LABELS` constant, so the curation-outcome figures key on the `discard_reason` **text**, not the
+step number (otherwise the largest bucket, `≤5 molecules`, is mislabelled and dropped).
+**Not reproduced (by design):** chemical-space overlap heatmaps, binarisation agreement, embeddings,
+and molecule-level panels — their values are not written to the summary CSVs.
 
-## 02_euopenscreen_auroc.py
-Converts EU OpenScreen prediction H5 files to flat CSVs (one per model, saved in `data/processed/02_euopenscreen_preds/`) and computes per-feature AUROCs against experimental activity data from the `eu-openscreen-antimicrobial-tasks` repository. Only the 6–7 pathogens with available ground-truth task files are evaluated. Outputs a dot plot (`auroc.png`) and a scores table (`auroc_scores.csv`) in `output/02_euopenscreen_preds/`.
+## 03_chembl_models_performance.py
+For each pathogen in `data/raw/chembl_model_reports/`, loads the 5-fold cross-validation reports,
+computes mean ± std AUROC per model, and renders a per-model ROC-curve grid and paired rank
+boxplots. Outputs one summary CSV and two figures per pathogen to
+`output/03_chembl_models_performance/`.
 
-## 03_coadd_benchmark.py
-Evaluates the CoAdd model (eos3dys) against EU OpenScreen experimental data. For each of the 22 CoAdd endpoints (pathogen/strain/condition-specific predictions), computes AUROC against every available EU OpenScreen binary task, excluding compounds that appeared in the CoAdd training set for that endpoint. Outputs an AUROC matrix CSV and a heatmap in `output/03_coadd_benchmark/`.
-
-**Training data:** per-strain binarised MIC files from the `coadd-binary-tasks` sibling repo (`data/processed/coadd/05_binarised_mic/`), staged by `00_download_data.py`. Without this data, leakage removal is skipped and a warning is printed.
-
-## 04_crossactivity_analysis.py
-Assesses whether ChEMBL and CoAdd models have pathogen-specific discriminatory power, or whether they learn general antimicrobial features. Three analyses: (1) Jaccard overlap between active compound sets across the 7 EU OpenScreen tasks; (2) specificity index per ChEMBL model (same-pathogen AUROC minus mean cross-pathogen AUROC); (3) pan-active vs specific-active AUROC split — actives shared across ≥2 tasks vs actives unique to a single pathogen — using the matched ChEMBL `consensus_score` and the best-matching CoAdd endpoint. Outputs to `output/04_crossactivity_analysis/`.
-
-**Threshold:** compounds with fewer than 5 specific-actives in a given task are flagged and their specific-active AUROC is set to NaN (insufficient data for a reliable estimate).
-
-## 01_admet_properties.py
-Downloads precomputed outputs for model `eos74km` (Antimicrobial class specificity prediction) from the Isaura public bucket and plots the distribution of each predicted property across the Ersilia reference library.
-
-## filter_compound_families.py
-Annotates the Ersilia reference library and DrugBank SMILES with known antimicrobial chemical family membership using SMARTS substructure searches. Each compound receives a boolean column per family; assignment is non-exclusive (a compound may belong to multiple families).
-
-**Families covered (12):** beta-lactams, tetracyclines, fluoroquinolones, sulfonamides, oxazolidinones, nitroimidazoles, rifamycins, phenicols, quinolines, nitrofurans, macrolides, diaminopyrimidines.
-
-**SMARTS notes:**
-- Fluoroquinolones require both the 4-oxo-3-carboxylic acid quinolone core AND a fluorine atom.
-- Macrolides are detected programmatically (SMARTS cannot constrain ring size): a compound qualifies if it contains a lactone within a ring of size ≥ 12.
-- Nitroimidazole and nitrofuran patterns use branch notation `[N+](=O)([O-])` (not chain) to correctly attach the nitro group to the ring carbon.
-- Rifamycins are matched via the aminonaphthalenediol core (`Nc1cc(O)c2ccccc2c1O`) shared by all clinically used rifamycins; the complex ansa-bridge is not required for matching.
+## 04_ersilia_predictions.sh
+First live **Ersilia CLI** step (all earlier predictions came from the Isaura precalc cache). For
+each model, runs `ersilia fetch → serve → run → close` over two compound libraries, writing one bare
+`{eosid}.csv` per model per library to `output/04_ersilia_predictions/{euopenscreen,coadd}/`
+(consolidated inputs in `inputs/`). Idempotent, with an append-only `_failures.log`.
+**Models (16):** the 15 in `config/pathogens_of_interest.csv` plus the CoAdd model `eos3dys`; every
+model predicts both libraries.
+**Libraries:** EU OpenScreen reuses `data/raw/euopenscreen_data/02_merged/02_only_smiles.csv`
+(106,290 compounds); CoAdd uses the `std_smiles` column of `data/raw/coadd_data/00_smiles_info.csv`,
+deduplicated → 100,006. Both are ~100k compounds.
+**Environment:** requires `ersilia` in a conda env (`ERSILIA_ENV`, default `ersilia`; deliberately
+not a `requirements.txt` dependency).
+**Compute:** ~16 × ~206k predictions — an overnight job. `SMOKE=1` runs one model over
+~1,500-compound subsets for a fast end-to-end check.

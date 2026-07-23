@@ -15,9 +15,9 @@ figure_cells.json footprint manifest. No A/B/C panel letters (ordering happens i
 
 Output
 ------
-    output/xx_chembl_data_curation/png/<panel>.png
-    output/xx_chembl_data_curation/pdf/<panel>.pdf
-    output/xx_chembl_data_curation/figure_cells.json
+    output/02_chembl_data_curation/png/<panel>.png
+    output/02_chembl_data_curation/pdf/<panel>.pdf
+    output/02_chembl_data_curation/figure_cells.json
 """
 
 import json
@@ -31,7 +31,7 @@ from plots_chembl_curation import save_curation_figures  # noqa: E402
 from default import RANDOM_SEED  # noqa: E402
 
 data_dir = os.path.join(root, "..", "data", "raw", "chembl_curation")
-output_dir = os.path.join(root, "..", "output", "xx_chembl_data_curation")
+output_dir = os.path.join(root, "..", "output", "02_chembl_data_curation")
 os.makedirs(output_dir, exist_ok=True)
 
 # Provenance: record the ChEMBL snapshot the curation ran against.

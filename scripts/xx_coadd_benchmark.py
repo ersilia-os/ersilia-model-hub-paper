@@ -1,29 +1,29 @@
 """Evaluate CoAdd model (eos3dys) endpoints against EU OpenScreen binary tasks.
 
 For each CoAdd endpoint, computes AUROC against each pathogen's primary assay
-(as defined in data/raw/euopenscreen_tasks/primary_assays_manual.csv). Compounds
+(as defined in data/raw/euopenscreen_data/primary_assays_manual.csv). Compounds
 present in the CoAdd training set for a given endpoint are removed before computing
-AUROC (leakage check). Requires the coadd_training data downloaded via 00_download_data.py.
+AUROC (leakage check). Requires the CoAdd data downloaded via 00_download_data.py.
 
 Requires
 --------
-    data/processed/02_euopenscreen_preds/eos3dys.csv
-    data/raw/euopenscreen_tasks/primary_assays_manual.csv
-    data/raw/euopenscreen_tasks/02_binarised_assays/{assay_eos_id}.csv
-    data/raw/euopenscreen_tasks/02_merged/02_{code}.csv  (for InChIKey enrichment)
-    data/raw/euopenscreen_tasks/06_subset_data/exclusivity/{code}_{exclusive,nonexclusive}.csv
-    data/raw/euopenscreen_tasks/06_subset_data/secondary/{code}_secondary.csv
-    data/raw/coadd_training/{strain}.csv
+    data/processed/xx_euopenscreen_preds/eos3dys.csv
+    data/raw/euopenscreen_data/primary_assays_manual.csv
+    data/raw/euopenscreen_data/02_binarised_assays/{assay_eos_id}.csv
+    data/raw/euopenscreen_data/02_merged/02_{code}.csv  (for InChIKey enrichment)
+    data/raw/euopenscreen_data/06_subset_data/exclusivity/{code}_{exclusive,nonexclusive}.csv
+    data/raw/euopenscreen_data/06_subset_data/secondary/{code}_secondary.csv
+    data/raw/coadd_data/05_binarised_mic/{strain}.csv
 
 Outputs
 -------
-    output/03_coadd_benchmark/auroc_matrix.csv
-    output/03_coadd_benchmark/auroc_heatmap.png
-    output/03_coadd_benchmark/auroc_swarm_same_vs_different.png
-    output/03_coadd_benchmark/auroc_matrix_{exclusive,nonexclusive,secondary}.csv
-    output/03_coadd_benchmark/auroc_heatmap_{exclusive,nonexclusive,secondary}.png
-    output/03_coadd_benchmark/auroc_heatmap_exclusive_vs_nonexclusive.png
-    output/03_coadd_benchmark/auroc_heatmap_primary_vs_secondary.png
+    output/xx_coadd_benchmark/auroc_matrix.csv
+    output/xx_coadd_benchmark/auroc_heatmap.png
+    output/xx_coadd_benchmark/auroc_swarm_same_vs_different.png
+    output/xx_coadd_benchmark/auroc_matrix_{exclusive,nonexclusive,secondary}.csv
+    output/xx_coadd_benchmark/auroc_heatmap_{exclusive,nonexclusive,secondary}.png
+    output/xx_coadd_benchmark/auroc_heatmap_exclusive_vs_nonexclusive.png
+    output/xx_coadd_benchmark/auroc_heatmap_primary_vs_secondary.png
 """
 
 import os
@@ -41,15 +41,15 @@ from default import COADD_MODEL_ID
 from plotting_utils import abbrev, plot_auroc_heatmap, plot_same_vs_diff_swarm
 
 pred_csv = os.path.join(
-    root, "..", "data", "processed", "02_euopenscreen_preds", f"{COADD_MODEL_ID}.csv"
+    root, "..", "data", "processed", "xx_euopenscreen_preds", f"{COADD_MODEL_ID}.csv"
 )
-tasks_dir = os.path.join(root, "..", "data", "raw", "euopenscreen_tasks")
+tasks_dir = os.path.join(root, "..", "data", "raw", "euopenscreen_data")
 binarised_dir = os.path.join(tasks_dir, "02_binarised_assays")
 merged_dir = os.path.join(tasks_dir, "02_merged")
 subset_dir = os.path.join(tasks_dir, "06_subset_data")
 primary_csv = os.path.join(tasks_dir, "primary_assays_manual.csv")
-coadd_training_dir = os.path.join(root, "..", "data", "raw", "coadd_training")
-output_dir = os.path.join(root, "..", "output", "03_coadd_benchmark")
+coadd_data_dir = os.path.join(root, "..", "data", "raw", "coadd_data", "05_binarised_mic")
+output_dir = os.path.join(root, "..", "output", "xx_coadd_benchmark")
 
 os.makedirs(output_dir, exist_ok=True)
 
@@ -59,7 +59,7 @@ os.makedirs(output_dir, exist_ok=True)
 if not os.path.exists(pred_csv):
     print(
         f"Predictions not found at {pred_csv}. "
-        "Run 02_euopenscreen_auroc.py first to convert the H5 file."
+        "Run xx_euopenscreen_auroc.py first to convert the H5 file."
     )
     sys.exit(1)
 
@@ -83,10 +83,10 @@ def _endpoint_to_strain(endpoint):
 
 
 endpoint_train_keys = {}
-coadd_training_available = os.path.isdir(coadd_training_dir)
+coadd_data_available = os.path.isdir(coadd_data_dir)
 
 for ep in endpoint_cols:
-    if not coadd_training_available:
+    if not coadd_data_available:
         endpoint_train_keys[ep] = set()
         continue
     strain = _endpoint_to_strain(ep)
@@ -94,7 +94,7 @@ for ep in endpoint_cols:
         print(f"[leakage] {ep}: no known metric suffix — skipping leakage check")
         endpoint_train_keys[ep] = set()
         continue
-    train_file = os.path.join(coadd_training_dir, f"{strain}.csv")
+    train_file = os.path.join(coadd_data_dir, f"{strain}.csv")
     if not os.path.exists(train_file):
         print(f"[leakage] {ep}: training file not found ({strain}.csv) — skipping leakage check")
         endpoint_train_keys[ep] = set()
@@ -103,9 +103,9 @@ for ep in endpoint_cols:
     endpoint_train_keys[ep] = set(train_df["inchikey"].dropna())
     print(f"[leakage] {ep}: {len(endpoint_train_keys[ep])} training compounds")
 
-if not coadd_training_available:
+if not coadd_data_available:
     print(
-        f"[WARN] CoAdd training data not found at {coadd_training_dir}. "
+        f"[WARN] CoAdd training data not found at {coadd_data_dir}. "
         "Run 00_download_data.py to enable leakage removal."
     )
 

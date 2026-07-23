@@ -18,8 +18,8 @@ Requires data/compound_lists/reference_library_smiles.csv and
 data/compound_lists/drugbank_smiles.csv (run 00_download_data.py first).
 
 Outputs:
-  - output/03_compound_families/reference_library_families.csv
-  - output/03_compound_families/drugbank_families.csv
+  - output/xx_compound_families/reference_library_families.csv
+  - output/xx_compound_families/drugbank_families.csv
 """
 
 import os
@@ -32,7 +32,7 @@ root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root, "..", "src"))
 
 data_dir = os.path.join(root, "..", "data","raw", "compound_lists")
-output_dir = os.path.join(root, "..", "output", "03_compound_families")
+output_dir = os.path.join(root, "..", "output", "xx_compound_families")
 os.makedirs(output_dir, exist_ok=True)
 
 # ---------------------------------------------------------------------------

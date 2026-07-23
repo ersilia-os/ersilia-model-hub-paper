@@ -1,5 +1,5 @@
 """Concrete plot classes and the figure entry point for the ChEMBL data-curation figures
-(scripts/xx_chembl_data_curation.py).
+(scripts/02_chembl_data_curation.py).
 
 Each panel reproduces a step-27 figure from ``chembl-antimicrobial-tasks``
 (``scripts/27_general_plots.py``) but is rebuilt here **purely from the per-pathogen and

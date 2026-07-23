@@ -1,7 +1,7 @@
 """Analyse Ersilia Model Hub metadata and plot summary statistics.
 
 Requires data/raw/airtable_metadata.csv (run 00_download_data.py first) and
-data/config/pathogens_of_interest.csv.
+config/pathogens_of_interest.csv.
 
 Counts are written per field; each metadata panel (Tasks & subtasks, Source Type,
 Output, Biomedical Area, Target Organism, pathogen circle-treemap) is saved as its own
@@ -30,7 +30,7 @@ from default import SUBTASK_PARENT, SUBTASK_DISPLAY, BIOAREA_DISPLAY  # noqa: E4
 outpath = os.path.join(root, "..", "output", "01_models_metadata")
 os.makedirs(outpath, exist_ok=True)
 
-pathogens_path = os.path.join(root, "..", "data", "config", "pathogens_of_interest.csv")
+pathogens_path = os.path.join(root, "..", "config", "pathogens_of_interest.csv")
 
 df = pd.read_csv(os.path.join(root, "..", "data", "raw", "airtable_metadata.csv"),
                  encoding="utf-8-sig")

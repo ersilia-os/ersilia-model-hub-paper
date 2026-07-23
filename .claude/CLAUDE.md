@@ -7,8 +7,8 @@ This is an Ersilia Open Source Initiative research analysis repository.
 This is the by-default structure of the repository. Not all folders are mandatory. Before wrapping up the repository, ask before removing any unused folders.
 
 ```
+├── config/           # Manually curated input files — committed to git, not eosvc-tracked
 ├── data/
-│   ├── config/       # Manually curated input files — committed to git, not eosvc-tracked
 │   ├── raw/          # Original, untouched datasets (eosvc-tracked, not in git)
 │   └── processed/    # Cleaned and transformed datasets (eosvc-tracked, not in git)
 ├── scripts/          # Standalone scripts, numbered sequentially (01_, 02_, ...)
@@ -22,7 +22,7 @@ This is the by-default structure of the repository. Not all folders are mandator
 └── requirements.txt  # Version-pinned dependencies
 ```
 
-`data/config/` holds small, manually created reference files (e.g. `pathogens_of_interest.csv`) and any manually placed inputs that have no automated download yet. Unlike `data/raw/` and `data/processed/`, these files **are** committed to git so they are always available without running any download script.
+`config/` (top-level) holds small, manually created reference files (e.g. `pathogens_of_interest.csv`) and any manually placed inputs that have no automated download yet. Unlike `data/raw/` and `data/processed/`, these files **are** committed to git (it sits outside the eosvc-tracked `data/` tree) so they are always available without running any download script.
 
 ## Hard requirements
 
@@ -133,7 +133,7 @@ Use Markdown. A naming convention like `YYYY-MM-DD_topic.md` or `NN_topic.md` ke
 | **3 — Airtable** | Airtable metadata exports | Ersilia Model Hub metadata |
 | **4 — Isaura** | Pre-computed model predictions for a compound library | Annotation model outputs for the reference library |
 
-Files that have no automated source yet (manually curated or not yet published) go in `data/config/` and are committed to git. Add a `NOTE:` comment in Section 1 of `00_download_data.py` so the future automation step is easy to find.
+Files that have no automated source yet (manually curated or not yet published) go in `config/` and are committed to git. Add a `NOTE:` comment in Section 1 of `00_download_data.py` so the future automation step is easy to find.
 
 ## Human sign-off required
 

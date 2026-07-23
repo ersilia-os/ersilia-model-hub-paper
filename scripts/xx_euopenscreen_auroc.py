@@ -1,8 +1,8 @@
 """Convert EU OpenScreen H5 predictions to CSV and compute AUROCs against pathogen tasks.
 
-H5 files in data/raw/eu-openscreen_preds_h5/ are converted to flat CSVs in
-data/processed/02_euopenscreen_preds/. For each pathogen, only the primary assay
-(as defined in data/raw/euopenscreen_tasks/primary_assays_manual.csv) is used.
+H5 files in config/eu-openscreen_preds_h5/ are converted to flat CSVs in
+data/processed/xx_euopenscreen_preds/. For each pathogen, only the primary assay
+(as defined in data/raw/euopenscreen_data/primary_assays_manual.csv) is used.
 
 Also produces a cross-pathogen heatmap: consensus_score AUROC of every pathogen model
 against every available EU OpenScreen task, using only deduplicated compounds (training-
@@ -10,28 +10,28 @@ set molecules excluded per row pathogen).
 
 Requires
 --------
-    data/raw/eu-openscreen_preds_h5/*.h5
-    data/raw/pathogens_of_interest.csv
-    data/raw/euopenscreen_tasks/primary_assays_manual.csv
-    data/raw/euopenscreen_tasks/02_binarised_assays/{assay_eos_id}.csv
-    data/raw/euopenscreen_tasks/02_merged/02_{code}.csv  (for InChIKey enrichment)
-    data/raw/euopenscreen_tasks/06_subset_data/exclusivity/{code}_{exclusive,nonexclusive}.csv
-    data/raw/euopenscreen_tasks/06_subset_data/secondary/{code}_secondary.csv
+    config/eu-openscreen_preds_h5/*.h5
+    config/pathogens_of_interest.csv
+    data/raw/euopenscreen_data/primary_assays_manual.csv
+    data/raw/euopenscreen_data/02_binarised_assays/{assay_eos_id}.csv
+    data/raw/euopenscreen_data/02_merged/02_{code}.csv  (for InChIKey enrichment)
+    data/raw/euopenscreen_data/06_subset_data/exclusivity/{code}_{exclusive,nonexclusive}.csv
+    data/raw/euopenscreen_data/06_subset_data/secondary/{code}_secondary.csv
 
 Outputs
 -------
-    data/processed/02_euopenscreen_preds/{eosid}.csv        (one per model)
-    output/02_euopenscreen_preds/leakage_report.csv
-    output/02_euopenscreen_preds/auroc_scores.csv
-    output/02_euopenscreen_preds/auroc_dotplot.png
-    output/02_euopenscreen_preds/roc_curves.png
-    output/02_euopenscreen_preds/auroc_scores_deduplicated.csv
-    output/02_euopenscreen_preds/auroc_dotplot_deduplicated.png
-    output/02_euopenscreen_preds/roc_curves_deduplicated.png
-    output/02_euopenscreen_preds/auroc_heatmap_deduplicated.csv
-    output/02_euopenscreen_preds/auroc_heatmap_deduplicated.png
-    output/02_euopenscreen_preds/auroc_scores_{exclusive,nonexclusive,secondary}.csv
-    output/02_euopenscreen_preds/auroc_dotplot_{exclusive,nonexclusive,secondary}.png
+    data/processed/xx_euopenscreen_preds/{eosid}.csv        (one per model)
+    output/xx_euopenscreen_preds/leakage_report.csv
+    output/xx_euopenscreen_preds/auroc_scores.csv
+    output/xx_euopenscreen_preds/auroc_dotplot.png
+    output/xx_euopenscreen_preds/roc_curves.png
+    output/xx_euopenscreen_preds/auroc_scores_deduplicated.csv
+    output/xx_euopenscreen_preds/auroc_dotplot_deduplicated.png
+    output/xx_euopenscreen_preds/roc_curves_deduplicated.png
+    output/xx_euopenscreen_preds/auroc_heatmap_deduplicated.csv
+    output/xx_euopenscreen_preds/auroc_heatmap_deduplicated.png
+    output/xx_euopenscreen_preds/auroc_scores_{exclusive,nonexclusive,secondary}.csv
+    output/xx_euopenscreen_preds/auroc_dotplot_{exclusive,nonexclusive,secondary}.png
 """
 
 import os
@@ -49,20 +49,20 @@ sys.path.append(os.path.join(root, "..", "src"))
 
 from plotting_utils import abbrev, plot_auroc_dotplot, plot_auroc_heatmap, plot_roc_single
 
-raw_h5_dir = os.path.join(root, "..", "data", "config", "eu-openscreen_preds_h5")
-processed_dir = os.path.join(root, "..", "data", "processed", "02_euopenscreen_preds")
-tasks_dir = os.path.join(root, "..", "data", "raw", "euopenscreen_tasks")
+raw_h5_dir = os.path.join(root, "..", "config", "eu-openscreen_preds_h5")
+processed_dir = os.path.join(root, "..", "data", "processed", "xx_euopenscreen_preds")
+tasks_dir = os.path.join(root, "..", "data", "raw", "euopenscreen_data")
 binarised_dir = os.path.join(tasks_dir, "02_binarised_assays")
 merged_dir = os.path.join(tasks_dir, "02_merged")
 subset_dir = os.path.join(tasks_dir, "06_subset_data")
 models_dir = os.path.join(root, "..", "..", "chembl-antimicrobial-models")
-output_dir = os.path.join(root, "..", "output", "02_euopenscreen_preds")
+output_dir = os.path.join(root, "..", "output", "xx_euopenscreen_preds")
 
 os.makedirs(processed_dir, exist_ok=True)
 os.makedirs(output_dir, exist_ok=True)
 
 pathogens = pd.read_csv(
-    os.path.join(root, "..", "data", "config", "pathogens_of_interest.csv")
+    os.path.join(root, "..", "config", "pathogens_of_interest.csv")
 )
 
 primary_df = pd.read_csv(os.path.join(tasks_dir, "primary_assays_manual.csv"))

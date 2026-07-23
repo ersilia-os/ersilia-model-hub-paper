@@ -14,9 +14,9 @@ Requires
 
 Outputs
 -------
-    output/02_chembl_models_performance/{pathogen}_auroc_summary.csv
-    output/02_chembl_models_performance/{pathogen}_roc_curves.png
-    output/02_chembl_models_performance/{pathogen}_rank_boxplots.png
+    output/03_chembl_models_performance/{pathogen}_auroc_summary.csv
+    output/03_chembl_models_performance/{pathogen}_roc_curves.png
+    output/03_chembl_models_performance/{pathogen}_rank_boxplots.png
 """
 
 import json
@@ -34,7 +34,7 @@ sys.path.append(os.path.join(root, "..", "src"))
 from plotting_utils import plot_rank_boxplots, plot_roc_single
 
 reports_dir = os.path.join(root, "..", "data", "raw", "chembl_model_reports")
-output_dir = os.path.join(root, "..", "output", "02_chembl_models_performance")
+output_dir = os.path.join(root, "..", "output", "03_chembl_models_performance")
 os.makedirs(output_dir, exist_ok=True)
 
 # Format: print | Style: article

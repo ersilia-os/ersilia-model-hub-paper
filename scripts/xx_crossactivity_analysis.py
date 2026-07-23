@@ -21,22 +21,22 @@ specific activity or simply learn general antimicrobial features:
 
 Requires
 --------
-    data/raw/euopenscreen_tasks/{code}.csv
-    data/config/pathogens_of_interest.csv
-    data/processed/02_euopenscreen_preds/{eosid}.csv   (ChEMBL predictions)
-    data/processed/02_euopenscreen_preds/eos3dys.csv   (CoAdd predictions)
-    output/02_euopenscreen_preds/auroc_heatmap_deduplicated.csv
-    output/03_coadd_benchmark/auroc_matrix.csv
+    data/raw/euopenscreen_data/{code}.csv
+    config/pathogens_of_interest.csv
+    data/processed/xx_euopenscreen_preds/{eosid}.csv   (ChEMBL predictions)
+    data/processed/xx_euopenscreen_preds/eos3dys.csv   (CoAdd predictions)
+    output/xx_euopenscreen_preds/auroc_heatmap_deduplicated.csv
+    output/xx_coadd_benchmark/auroc_matrix.csv
 
 Outputs
 -------
-    output/04_crossactivity_analysis/active_overlap_counts.csv
-    output/04_crossactivity_analysis/active_overlap_jaccard.csv
-    output/04_crossactivity_analysis/active_overlap_heatmap.png
-    output/04_crossactivity_analysis/specificity_index.csv
-    output/04_crossactivity_analysis/specificity_index.png
-    output/04_crossactivity_analysis/panactive_auroc.csv
-    output/04_crossactivity_analysis/panactive_auroc.png
+    output/xx_crossactivity_analysis/active_overlap_counts.csv
+    output/xx_crossactivity_analysis/active_overlap_jaccard.csv
+    output/xx_crossactivity_analysis/active_overlap_heatmap.png
+    output/xx_crossactivity_analysis/specificity_index.csv
+    output/xx_crossactivity_analysis/specificity_index.png
+    output/xx_crossactivity_analysis/panactive_auroc.csv
+    output/xx_crossactivity_analysis/panactive_auroc.png
 """
 
 import os
@@ -53,16 +53,16 @@ sys.path.append(os.path.join(root, "..", "src"))
 from default import COADD_MODEL_ID
 from plotting_utils import abbrev, plot_auroc_heatmap, plot_specificity_bars
 
-tasks_dir = os.path.join(root, "..", "data", "raw", "euopenscreen_tasks")
-preds_dir = os.path.join(root, "..", "data", "processed", "02_euopenscreen_preds")
-config_dir = os.path.join(root, "..", "data", "config")
+tasks_dir = os.path.join(root, "..", "data", "raw", "euopenscreen_data")
+preds_dir = os.path.join(root, "..", "data", "processed", "xx_euopenscreen_preds")
+config_dir = os.path.join(root, "..", "config")
 chembl_heatmap_csv = os.path.join(
-    root, "..", "output", "02_euopenscreen_preds", "auroc_heatmap_deduplicated.csv"
+    root, "..", "output", "xx_euopenscreen_preds", "auroc_heatmap_deduplicated.csv"
 )
 coadd_matrix_csv = os.path.join(
-    root, "..", "output", "03_coadd_benchmark", "auroc_matrix.csv"
+    root, "..", "output", "xx_coadd_benchmark", "auroc_matrix.csv"
 )
-output_dir = os.path.join(root, "..", "output", "04_crossactivity_analysis")
+output_dir = os.path.join(root, "..", "output", "xx_crossactivity_analysis")
 
 os.makedirs(output_dir, exist_ok=True)
 

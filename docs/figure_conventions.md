@@ -96,6 +96,32 @@ exact footprint — the authoritative footprint is in `figure_cells.json`, so pl
 recorded cell box. Group panels into rows whose widths sum to ≤ 6 cells. Where two panels share a
 legend, drop the per-panel legends and render one standalone legend panel to place once.
 
+## Per-figure layouts
+
+Script-specific footprints and page arrangements. Footprints are also written to each script's
+`figure_cells.json`.
+
+### 01_ersilia_metadata.py (`save_metadata_figures`, `src/plots_metadata.py`)
+
+Six panels on the 3 cm grid: Tasks & subtasks `(3,3)`, Source Type `(2,3)`, Output `(3,3)`,
+Biomedical Area `(4,3)`, Target Organism `(4,3)`, pathogen treemap `(3,3)`.
+
+### 02_chembl_data_curation.py (`save_curation_figures`, `src/plots_chembl_curation.py`)
+
+- **Row 1** — `curation_discard` + `chemspace_attrition` at **2×2 cells (60 mm)** each, per-panel
+  legends omitted; `curation_outcome_legend` (a standalone 60 mm swatch key for the shared
+  curation-outcome taxonomy) is placed once for both. `chemspace_attrition` hides any outcome that
+  removes zero unique molecules across all pathogens (e.g. Co-ADD); it stays in the shared legend.
+- **Row 2** — `pool_active_ratios` + `pool_cv_auroc` at **3×3 cells (90 mm)** each. DR and SP are
+  combined per panel (DR = cobalt, SP = tangerine); both show **final pools** (step-25 grown ∪
+  step-26 catch-all).
+- **Coverage + funnel overlap unit** — `chembl_coverage` and `pipeline_funnel` are each **~45 mm
+  (off-grid, footprint `[1.5, 1.5]`)** and both drawn in **crimson** (donut covered slice and funnel
+  bars encode the same "kept" quantity), intended to be overlapped by hand into one slot.
+- Remaining panels (`wholecell_sizes`, `binarisation_active_ratio`, `activity_ratio_flow`,
+  `activity_ratio_per_pathogen`, `cutoff_sensitivity`, `pool_partition`, `merge_auroc`,
+  `lowdata_auroc`) keep their default footprints, unassigned to a row yet.
+
 ## Gotchas
 
 - **Log-axis bar charts:** draw bars from a *finite positive* baseline (`bottom=floor`,

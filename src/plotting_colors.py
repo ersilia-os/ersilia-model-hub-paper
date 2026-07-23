@@ -48,7 +48,7 @@ def output_colors(n):
 
 
 # ---------------------------------------------------------------------------
-# ChEMBL data-curation figures (xx_chembl_data_curation.py)
+# ChEMBL data-curation figures (02_chembl_data_curation.py)
 # ---------------------------------------------------------------------------
 # Semantic keys ported from ``../chembl-antimicrobial-tasks/src/plot_colors.py`` but anchored
 # to stylia ArticleColors and kept within the repo convention (turquoise default, silver for
