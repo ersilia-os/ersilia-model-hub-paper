@@ -1,9 +1,9 @@
 eosvc==0.1.3
-isaura==2.1.29
+isaura==2.4.1
 git+https://github.com/ersilia-os/eosframes.git@v1.0.1
 pandas==2.3.0
 stylia==1.0.1
-requests==2.32.3
+requests==2.32.5
 circlify==0.15.1
 h5py==3.13.0
 scikit-learn==1.8.0
