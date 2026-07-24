@@ -611,6 +611,16 @@ class PoolActiveRatiosPlot(BasePlot):
         self.ax.set_xticks(np.arange(len(cc)))
         self.ax.set_xticklabels(cc, rotation=90)
         self.ax.legend(handles=_cat_handles(), loc="upper right", fontsize=stylia.FONTSIZE_SMALL)
+        # Pool-size key: drawn manually in axes-fraction coords rather than via ax.legend() —
+        # matplotlib's Legend cannot reliably vertically center a label against a marker this
+        # much larger than a normal legend glyph, so dot and label are placed at the same
+        # explicit y instead.
+        for v, y in zip((1_000, 50_000), (0.94, 0.87)):
+            self.ax.scatter([0.06], [y], s=self._area_for(v, nmax), transform=self.ax.transAxes,
+                            color=NEUTRAL, alpha=0.55, edgecolor="white", linewidth=0.5,
+                            clip_on=False)
+            self.ax.text(0.11, y, f"{v:,} molecules", transform=self.ax.transAxes,
+                        va="center", fontsize=stylia.FONTSIZE_SMALL)
         stylia.label(self.ax, xlabel="", ylabel="active ratio", title="Final pool active ratio")
 
     def _area_for(self, n, nmax):
