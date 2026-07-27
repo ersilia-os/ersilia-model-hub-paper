@@ -39,15 +39,18 @@ boxplots. Outputs one summary CSV and two figures per pathogen to
 `output/03_chembl_models_performance/`.
 
 ## 04_ersilia_predictions.sh
-First live **Ersilia CLI** step (all earlier predictions came from the Isaura precalc cache). For
-each model, runs `ersilia fetch → serve → run → close` over two compound libraries, writing one bare
-`{eosid}.csv` per model per library to `output/04_ersilia_predictions/{euopenscreen,coadd}/`
-(consolidated inputs in `inputs/`). Idempotent, with an append-only `_failures.log`.
+First live **Ersilia CLI** step (all earlier predictions came from the Isaura precalc cache). Runs
+`ersilia fetch → serve → run → close` per model, writing one bare `{eosid}.csv` per model per library
+to `output/04_ersilia_predictions/{euopenscreen,coadd}/` (consolidated inputs in `inputs/`).
+**Library-major ordering:** all EU OpenScreen predictions (every model) run first, then all CoAdd —
+EU OpenScreen has priority. Idempotent (skip-if-exists), with an append-only `_failures.log`.
 **Models (16):** the 15 in `config/pathogens_of_interest.csv` plus the CoAdd model `eos3dys`; every
 model predicts both libraries.
 **Libraries:** EU OpenScreen reuses `data/raw/euopenscreen_data/02_merged/02_only_smiles.csv`
 (106,290 compounds); CoAdd uses the `std_smiles` column of `data/raw/coadd_data/00_smiles_info.csv`,
-deduplicated → 100,006. Both are ~100k compounds.
+dropping 199 rows with empty `std_smiles` (failed upstream standardization) and deduplicating →
+100,005. Both are ~100k compounds. Blank SMILES are filtered from both inputs so Ersilia is never
+fed an empty row.
 **Environment:** requires `ersilia` in a conda env (`ERSILIA_ENV`, default `ersilia`; deliberately
 not a `requirements.txt` dependency).
 **Compute:** ~16 × ~206k predictions — an overnight job. `SMOKE=1` runs one model over

@@ -11,6 +11,11 @@
 # (eosid column) plus the CoAdd model eos3dys (COADD_MODEL_ID in src/default.py).
 # Each model predicts BOTH libraries -> 32 prediction runs.
 #
+# Ordering is LIBRARY-MAJOR: all EU OpenScreen predictions (every model) run FIRST,
+# then all CoAdd predictions. EU OpenScreen has priority. Fetches are cached, so the
+# CoAdd pass re-serves each model without re-downloading. Skip-if-exists leaves any
+# already-computed {library}/{eosid}.csv untouched.
+#
 # Inputs (built here, skip-if-exists):
 #   output/04_ersilia_predictions/inputs/euopenscreen_smiles.csv   (single `smiles` column)
 #   output/04_ersilia_predictions/inputs/coadd_smiles.csv          (single `smiles` column)
@@ -83,14 +88,16 @@ if [ -f "$euos_input" ]; then
     log "[skip] EU OpenScreen input exists ($euos_input)"
 else
     [ -f "$euos_source" ] || { echo "ERROR: EU OpenScreen source not found: $euos_source" >&2; exit 1; }
-    cp "$euos_source" "$euos_input"
+    # already deduplicated upstream; preserve order, just drop any blank SMILES lines
+    { head -1 "$euos_source"; tail -n +2 "$euos_source" | grep -v '^[[:space:]]*$'; } > "$euos_input"
     log "EU OpenScreen input -> $euos_input ($(( $(wc -l < "$euos_input") - 1 )) compounds)"
 fi
 
 # CoAdd: the full screening library from the canonical 00_smiles_info.csv (staged by
 # 00_download_data.py). Predict on the standardized SMILES (`std_smiles`), matching
-# ../new-modelling; dedup on the exact std_smiles string (removes only true duplicates
-# -- no analysis data dropped) -> ~100,006 compounds. SMILES contain no commas, so the
+# ../new-modelling; dedup on the exact std_smiles string. Rows with an EMPTY std_smiles
+# (199 exotic structures that failed upstream standardization) are dropped here so no
+# blank SMILES is fed to Ersilia -> ~100,005 compounds. SMILES contain no commas, so the
 # column is safe to `cut`.
 coadd_info="$COADD_DIR/00_smiles_info.csv"
 if [ -f "$coadd_input" ]; then
@@ -100,9 +107,9 @@ else
     std_col="$(head -1 "$coadd_info" | tr ',' '\n' | grep -nx 'std_smiles' | cut -d: -f1)"
     [ -n "$std_col" ] || { echo "ERROR: no 'std_smiles' column in $coadd_info" >&2; exit 1; }
     if [ "$SMOKE" = "1" ]; then
-        { echo "smiles"; tail -n +2 "$coadd_info" | cut -d, -f"$std_col" | sort -u | head -n 1500; } > "$coadd_input"
+        { echo "smiles"; tail -n +2 "$coadd_info" | cut -d, -f"$std_col" | grep -v '^[[:space:]]*$' | sort -u | head -n 1500; } > "$coadd_input"
     else
-        { echo "smiles"; tail -n +2 "$coadd_info" | cut -d, -f"$std_col" | sort -u; } > "$coadd_input"
+        { echo "smiles"; tail -n +2 "$coadd_info" | cut -d, -f"$std_col" | grep -v '^[[:space:]]*$' | sort -u; } > "$coadd_input"
     fi
     log "CoAdd input -> $coadd_input ($(( $(wc -l < "$coadd_input") - 1 )) unique compounds)"
 fi
@@ -123,40 +130,41 @@ if [ "$SMOKE" = "1" ]; then
 fi
 log "Models to run (${#models[@]}): ${models[*]}"
 
-# --- Per-model fetch / serve / run / close -----------------------------------
-run_model() {
-    local eosid="$1"
-    log "  fetch $eosid";  ersilia fetch "$eosid" || return 1
-    log "  serve $eosid";  ersilia serve "$eosid" || return 1
-    local lib out
-    for lib in euopenscreen coadd; do
-        out="$OUT_DIR/$lib/$eosid.csv"
-        if [ -f "$out" ]; then
-            log "  [skip] $eosid / $lib exists"
-            continue
-        fi
-        log "  run   $eosid / $lib"
-        # `ersilia run` is the current CLI; older builds use `ersilia api -i .. -o ..`.
-        ersilia run -i "$INPUTS_DIR/${lib}_smiles.csv" -o "$out" || { ersilia close >/dev/null 2>&1 || true; return 1; }
-    done
+# --- One (library, model) prediction: skip / fetch / serve / run / close -----
+run_one() {
+    local eosid="$1" lib="$2"
+    local out="$OUT_DIR/$lib/$eosid.csv"
+    if [ -f "$out" ]; then
+        log "  [skip] $lib / $eosid exists"
+        return 0
+    fi
+    log "  fetch $eosid"; ersilia fetch "$eosid" || return 1
+    log "  serve $eosid"; ersilia serve "$eosid" || { ersilia close >/dev/null 2>&1 || true; return 1; }
+    log "  run   $lib / $eosid"
+    # `ersilia run` is the current CLI; older builds use `ersilia api -i .. -o ..`.
+    ersilia run -i "$INPUTS_DIR/${lib}_smiles.csv" -o "$out" || { ersilia close >/dev/null 2>&1 || true; return 1; }
     ersilia close >/dev/null 2>&1 || true
     return 0
 }
 
+# Library-major: all EU OpenScreen first (priority), then all CoAdd.
 done_count=0
 fail_count=0
-for eosid in "${models[@]}"; do
-    log "=== $eosid ==="
-    if run_model "$eosid"; then
-        done_count=$((done_count + 1))
-    else
-        log "[FAIL] $eosid"
-        printf '%s\t%s\t%s\n' "$(date '+%F %T')" "$eosid" "fetch/serve/run failed" >> "$FAILURES_LOG"
-        ersilia close >/dev/null 2>&1 || true
-        fail_count=$((fail_count + 1))
-    fi
+for lib in euopenscreen coadd; do
+    log "########## LIBRARY: $lib ##########"
+    for eosid in "${models[@]}"; do
+        log "=== $lib / $eosid ==="
+        if run_one "$eosid" "$lib"; then
+            done_count=$((done_count + 1))
+        else
+            log "[FAIL] $lib / $eosid"
+            printf '%s\t%s\t%s\n' "$(date '+%F %T')" "$eosid" "$lib fetch/serve/run failed" >> "$FAILURES_LOG"
+            ersilia close >/dev/null 2>&1 || true
+            fail_count=$((fail_count + 1))
+        fi
+    done
 done
 
-log "Done. ${done_count} model(s) succeeded, ${fail_count} failed."
+log "Done. ${done_count} library-run(s) succeeded/skipped, ${fail_count} failed."
 [ "$fail_count" -gt 0 ] && log "See failures in $FAILURES_LOG"
 exit 0
