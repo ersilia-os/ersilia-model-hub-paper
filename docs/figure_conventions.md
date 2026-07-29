@@ -81,12 +81,48 @@ def save_my_figures(data, output_dir):
 ```
 
 **Colours** come from `src/plotting_colors.py` (semantic dicts anchored to stylia `ArticleColors`) —
-never hardcode hex. Convention: turquoise = default/positive, silver = reference/neutral lines,
-crimson = the "selected/kept" highlight; avoid plum/purple/grey as data colours.
+never hardcode hex and never instantiate `ArticleColors`/`NamedColors` in a plot module. For a
+one-off hue use the `hue(name, lighten=...)` accessor; for reference lines use `REFERENCE_LINE`
+(silver); for structural box/median/marker lines use `INK`. Convention: turquoise = default/positive,
+silver = reference/neutral lines, crimson = the "selected/kept" highlight; avoid plum/purple/grey as
+data colours.
 
-**Multi-panel in one file:** a figure may hold >1 axis (e.g. small multiples) — create the figure
-with `stylia.create_figure(nrows, ncols, width=cols/6, height=rows/6)`, store it as `self.fig`, and
-draw into each axis; `save()` only needs `self.fig`/`self.name`/`self.cells`/`self.is_available`.
+**Multi-panel in one file:** subclass `MultiPanelPlot` (in `plotting_base.py`) and call
+`self._new_figure(nrows, ncols, cells, name)` to build a correctly-sized multi-axis figure; draw into
+each axis. For a small-multiples grid where every cell is the same chart, subclass `GridPlot` and call
+`self.build_grid(items, cols=..., name=..., panel_fn=..., color_fn=...)` — it owns the columns/rows
+maths, edge-only axis labels and hiding of trailing empty cells.
+
+## The shared plotting layer
+
+A concrete panel should be **data-prep + declarative calls**, not hand-rolled matplotlib. Three shared
+layers back every panel so all figures read as one system:
+
+- **`plotting_colors.py`** — the single colour source (semantic dicts, `hue()`, `REFERENCE_LINE`, `INK`).
+- **`plotting_base.py`** — `BasePlot` (+ helpers `self.label(...)`, `self.ref_line(v, axis)`,
+  `self.legend({label: colour})`, `self._unavailable()`), plus the `MultiPanelPlot` / `GridPlot` bases.
+- **`plotting_utils.py`** — ax-based primitives that carry the house style:
+  `hbar`, `stacked_hbar`, `grouped_hbar` (bars); `box_with_jitter` (distribution boxes);
+  `roc_panel` (one ROC cell); `heatmap` + `diverging_cmap`; `ref_line`; `swatch_legend` /
+  `marker_legend`; `abbrev` / `abbrev_ticks` (genus abbreviation, e.g. `M. tuberculosis`).
+
+**House style (applied uniformly):**
+- **No panel titles.** Standalone panels carry no title (`self.label` accepts a `title` but ignores
+  it) — titles and lettering are added in Illustrator. The *only* text kept is the per-cell
+  identifier inside small-multiples (the model/organism name over each ROC or per-pathogen cell, and
+  DR/SP subplot labels), set via `stylia.label`/`roc_panel` on the sub-axis.
+- **Legends over data stay readable.** Every legend uses a semi-transparent white background
+  (`LEGEND_KW` = `frameon=True, facecolor="white", framealpha=0.7, edgecolor="none"`), applied by
+  `swatch_legend`/`marker_legend` and by any hand-built `ax.legend`.
+- **No invisible colours.** Sequential/ordered palettes must stay visible on the white page — never
+  let a shade fade to near-white/transparent (`_sequential` caps the lightest tint at `lighten=0.35`).
+- All colour via `plotting_colors`; dashed silver reference lines (`ref_line`); horizontal bars
+  ordered first-on-top (`hbar`); distribution boxes filled + tinted with `INK` median/whiskers and
+  colour-matched jittered points (`box_with_jitter`); abbreviated genus tick labels everywhere.
+
+When adding a panel, reach for an existing primitive first; only drop to raw matplotlib for genuinely
+unique geometry (treemap, funnel, donut, twin-axis), and even then route colour/labels/legend through
+the shared layer.
 
 ## Assembling a Nature figure
 
@@ -122,6 +158,29 @@ Biomedical Area `(4,3)`, Target Organism `(4,3)`, pathogen treemap `(3,3)`.
   `activity_ratio_per_pathogen`, `cutoff_sensitivity`, `pool_partition`, `merge_auroc`,
   `lowdata_auroc`) keep their default footprints, unassigned to a row yet.
 
+### 03_chembl_models_performance.py (`save_performance_figures`, `src/plots_chembl_performance.py`)
+
+Two panels per pathogen (15 pathogens, **196 models**), written to
+`output/03_chembl_models_performance/individual_plots/{png,pdf}/` with their own
+`figure_cells.json`. These 30 panels are **intermediate results, not paper figures** — they exist to
+inspect every model, and the condensed cross-pathogen figures live at the top level of the output
+dir. Note the grids show all of step 09, which includes 3 models step 10 discarded for AUROC < 0.7 —
+they are drawn unmarked, so any caption claiming "the 193 hub models" would be wrong; the `retained`
+column of the summary CSVs is the source of truth. See `scripts/README.md`.
+
+- **`{pathogen}_roc_curves`** — small multiples, one ROC per model, **6 columns** (full 180 mm
+  width) × `ceil(n/6)` rows, footprint `(rows, 6)`. Each panel sets `set_aspect("equal")` on a
+  0–1 box so the ROC is square; without it `create_figure(nrows, ncols)` with no `width`/`height`
+  squashes every panel into one default-height figure. Trailing empty cells are `axis("off")`.
+  Axis labels only on the grid edges (TPR on column 0, FPR on the last occupied panel of each
+  column). Curve colour = `auroc_shades(mean_auroc)`, cobalt fading colormap fitted to
+  **[0.35, 1.0]** — the low anchor is below 0.5 on purpose, since fitting at chance level renders
+  a chance-level curve white.
+- **`{pathogen}_rank_boxplots`** — actives vs inactives out-of-fold rank, one box pair per model,
+  footprint `(max(2, ceil(n/4)), 3)` — i.e. `MODELS_PER_CELL = 4`. Colours from
+  `ACTIVE_INACTIVE_COLORS` (crimson / silver); legend sits **above** the axes because every row of
+  the plot area is occupied by boxes.
+
 ## Gotchas
 
 - **Log-axis bar charts:** draw bars from a *finite positive* baseline (`bottom=floor`,
@@ -130,5 +189,9 @@ Biomedical Area `(4,3)`, Target Organism `(4,3)`, pathogen treemap `(3,3)`.
   `PipelineFunnelPlot`.
 - **Run in the stylia env:** figures must run in a conda env with stylia installed (e.g. `paper`),
   not `base`.
+- **Small multiples need explicit sizing:** `stylia.create_figure(nrows, ncols)` sizes the *whole
+  figure* to the format default, so an N×M grid gets N×M squashed panels. Always pass
+  `width=cols/6, height=rows/6` and, for aspect-critical charts (ROC, PR, calibration), also
+  `ax.set_aspect("equal", adjustable="box")`.
 - **Data provenance:** record the source snapshot/version (e.g. ChEMBL release) in the script
   docstring; stage summaries via `scripts/00_download_data.py`, never ad-hoc copies.

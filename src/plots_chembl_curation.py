@@ -11,25 +11,31 @@ function so the numbers match; the plotting is re-expressed on the paper's styli
 Figures whose values are NOT in the summary CSVs (chemical-space overlap/coverage, embedding
 scatters, molecule-level conflict panels) are intentionally not built here.
 
-Follows the pattern of ``plots_metadata.py``: one class per figure subclassing
-:class:`plotting_base.BasePlot`, and a ``save_curation_figures`` entry point.
+Follows the shared plotting layer: panels subclass :class:`plotting_base.BasePlot` /
+:class:`plotting_base.MultiPanelPlot` and draw through the :mod:`plotting_utils` primitives
+(``stacked_hbar``, ``box_with_jitter``, ``ref_line``, ``swatch_legend``) so their look matches
+every other step's figures. Colours come only from :mod:`plotting_colors`, and pathogen ticks
+are abbreviated genus names (``A. baumannii``) via a code→name map.
 """
 
 import json
 import os
 
-import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 import stylia
-from stylia.colors import ArticleColors, CyclicColormap
 
-from plotting_base import BasePlot, CELLS_PER_WIDTH
-from plotting_colors import CATEGORY_COLORS, AUROC_PASS_COLORS
-
-_AC = ArticleColors()
-INK = _AC.black          # structural box/whisker lines
-NEUTRAL = _AC.silver     # reference lines / "not considered"
+from plotting_base import BasePlot, MultiPanelPlot
+from plotting_colors import AUROC_PASS_COLORS, CATEGORY_COLORS, INK, REFERENCE_LINE, hue
+from plotting_utils import (
+    CAP_POINTS,
+    LEGEND_KW,
+    abbrev,
+    box_with_jitter,
+    ref_line,
+    stacked_hbar,
+    swatch_legend,
+)
 
 # --------------------------------------------------------------------------------------------
 # Constants ported verbatim from the upstream curation pipeline (plot_utils.py / 27_general_plots.py).
@@ -46,15 +52,15 @@ CURATION_OUTCOME_ORDER = [
     "uncategorized", "multi-unit", "Co-ADD", "superseded by PubChem", "manually excluded",
 ]
 CURATION_OUTCOME_COLOR = {
-    "retained": _AC.cobalt,
-    "not whole-cell": _AC.amber,
-    "qualitative-only": _AC.tangerine,
-    "≤5 molecules": _AC.fuchsia,
-    "uncategorized": _AC.turquoise,
-    "multi-unit": _AC.silver,
-    "Co-ADD": _AC.orchid,
-    "superseded by PubChem": _AC.periwinkle,
-    "manually excluded": _AC.crimson,
+    "retained": hue("cobalt"),
+    "not whole-cell": hue("amber"),
+    "qualitative-only": hue("tangerine"),
+    "≤5 molecules": hue("lime"),
+    "uncategorized": hue("turquoise"),
+    "multi-unit": hue("silver"),
+    "Co-ADD": hue("orchid"),
+    "superseded by PubChem": hue("periwinkle"),
+    "manually excluded": hue("crimson"),
 }
 # Verbose discard_reason (as written in 21_curation_summary.csv) -> short outcome label.
 _DISCARD_REASON_SHORT = {
@@ -93,10 +99,11 @@ CUTOFF_TIERS = ("low", "middle", "high")
 CATS = ["DR", "SP"]
 CAT_DISPLAY = {"DR": "Dose Response", "SP": "Single Point"}
 CATCHALL_MIN_AUROC = 0.70   # step-26 evaluation reference line (NOT enforced)
-CAP_POINTS = 1000           # max individual points drawn per box overlay
 
 _DR = CATEGORY_COLORS["DR"]
 _SP = CATEGORY_COLORS["SP"]
+_CAT_HUE = {"DR": "cobalt", "SP": "tangerine"}  # ArticleColors hue name per category
+_CAT_LEGEND = {"Dose Response": _DR, "Single Point": _SP}
 
 
 def _size_bins(values):
@@ -105,9 +112,37 @@ def _size_bins(values):
 
 
 def _sequential(base_name, n):
-    """``n`` shades of an ArticleColors hue, darkest first (for ordered size bins)."""
-    lightens = np.linspace(0.0, 0.75, n)
-    return [_AC.get(base_name, lighten=float(l)) for l in lightens]
+    """``n`` shades of an ArticleColors hue from a visible light tint to the full colour.
+
+    The lightest shade is capped well above white (``lighten=0.35``, not ``0.0``) so no ordered
+    bin renders as an invisible near-white block on the white page (see ``wholecell_sizes``)."""
+    lightens = np.linspace(0.35, 1.0, n)
+    return [hue(base_name, lighten=float(l)) for l in lightens]
+
+
+# --------------------------------------------------------------------------------------------
+# Pathogen labelling and house-style DR/SP box (set once, reused by every panel).
+# --------------------------------------------------------------------------------------------
+
+_SEED = None   # set in save_curation_figures from default.RANDOM_SEED
+_NAMES = None  # code -> binomial name, set in save_curation_figures (abbrev is a no-op if None)
+
+
+def _plabel(code):
+    return abbrev(code, _NAMES)
+
+
+def _labels(codes):
+    return [_plabel(c) for c in codes]
+
+
+def _cat_box(ax, values, position, cat, *, vert=True, width=0.34, jitter=True,
+             jitter_width=0.12, point_size=6, point_alpha=0.5, rng=None):
+    """House-style DR/SP distribution box: lightened category fill, INK lines, colour jitter."""
+    return box_with_jitter(ax, values, position, CATEGORY_COLORS[cat],
+                           face=hue(_CAT_HUE[cat], lighten=0.55), vert=vert, width=width,
+                           jitter=jitter, jitter_width=jitter_width, point_size=point_size,
+                           point_alpha=point_alpha, rng=rng)
 
 
 # --------------------------------------------------------------------------------------------
@@ -142,32 +177,6 @@ def available_pathogens(data_dir):
     return codes
 
 
-def _pathogen_colors(codes):
-    """A stable per-pathogen colour (cyclic NPG colormap handles >10 pathogens)."""
-    cm = CyclicColormap("npg")
-    cm.fit(list(range(len(codes))))
-    cols = cm.transform(list(range(len(codes))))
-    return {c: cols[i] for i, c in enumerate(codes)}
-
-
-# --------------------------------------------------------------------------------------------
-# Multi-panel base: owns a stylia figure with >1 axis, sized from the cell footprint. Sets only
-# the attributes BasePlot.save() needs (self.fig / self.name / self.cells / self.is_available).
-# --------------------------------------------------------------------------------------------
-
-class _MultiPanelPlot(BasePlot):
-    def _new_figure(self, nrows, ncols, cells, name):
-        self.cells = cells
-        self.name = name
-        self.is_available = True
-        rows, cols = cells
-        fig, axs = stylia.create_figure(
-            nrows, ncols, width=cols / CELLS_PER_WIDTH, height=rows / CELLS_PER_WIDTH
-        )
-        self.fig = fig
-        return axs
-
-
 # --------------------------------------------------------------------------------------------
 # Curation attrition
 # --------------------------------------------------------------------------------------------
@@ -175,26 +184,16 @@ class _MultiPanelPlot(BasePlot):
 def _stacked_outcome_barh(ax, codes, fracs, xlabel, title, legend=True):
     """Shared renderer: horizontal stacked bars per pathogen over CURATION_OUTCOME_ORDER (plus any
     unmapped outcomes appended), with the shared palette. ``fracs`` is a list (one dict per code)
-    of {outcome_label: fraction}. All-zero outcomes are skipped. ``legend=False`` omits the legend
-    (use the standalone CurationOutcomeLegendPlot when panels are packed into a tight row)."""
+    of {outcome_label: fraction}. ``legend=False`` omits the legend (use the standalone
+    CurationOutcomeLegendPlot when panels are packed into a tight row)."""
     extra = [k for f in fracs for k in f
              if k not in CURATION_OUTCOME_ORDER and k not in CURATION_OUTCOME_COLOR]
     segs = CURATION_OUTCOME_ORDER + sorted(set(extra))
-    y = np.arange(len(codes))
-    lefts = np.zeros(len(codes))
-    for seg in segs:
-        vals = np.array([f.get(seg, 0.0) for f in fracs], dtype=float)
-        if seg != "retained" and vals.sum() == 0:
-            continue
-        ax.barh(y, vals, left=lefts, color=CURATION_OUTCOME_COLOR.get(seg, NEUTRAL), label=seg)
-        lefts += vals
-    ax.set_yticks(y)
-    ax.set_yticklabels(codes)
-    ax.invert_yaxis()
-    ax.set_xlim(0, 1)
+    stacked_hbar(ax, _labels(codes), fracs, segs, CURATION_OUTCOME_COLOR,
+                 always_show=("retained",))
     if legend:
         ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5),
-                  fontsize=stylia.FONTSIZE_SMALL, frameon=False)
+                  fontsize=stylia.FONTSIZE_SMALL, **LEGEND_KW)
     stylia.label(ax, xlabel=xlabel, ylabel="", title=title)
 
 
@@ -218,8 +217,8 @@ class CurationDiscardPlot(BasePlot):
                 d["discard_reason"].astype(str))
             outcome = reason.where(discarded, "retained")
             fracs.append((outcome.value_counts() / len(d)).to_dict())
-        _stacked_outcome_barh(self.ax, codes, fracs, "Fraction of assays",
-                              "Assays retained vs discarded", legend=legend)
+        _stacked_outcome_barh(self.ax, codes, fracs, "Fraction of assays", "",
+                              legend=legend)
 
 
 # Chemical-space attrition. The cumulative curation stages in 21_curation_stats.csv (funnel order);
@@ -263,8 +262,8 @@ class ChemspaceAttritionPlot(BasePlot):
                         if lab:
                             f[lab] = f.get(lab, 0.0) + (float(cs[a]) - float(cs[b])) / total
             fracs.append(f)
-        _stacked_outcome_barh(self.ax, codes, fracs, "Fraction of chemical space",
-                              "Chemical space retained vs discarded", legend=legend)
+        _stacked_outcome_barh(self.ax, codes, fracs, "Fraction of chemical space", "",
+                              legend=legend)
 
 
 class CurationOutcomeLegendPlot(BasePlot):
@@ -275,10 +274,8 @@ class CurationOutcomeLegendPlot(BasePlot):
     def __init__(self, ax=None, cells=(2, 2)):
         BasePlot.__init__(self, ax=ax, cells=cells)
         self.name = "curation_outcome_legend"
-        handles = [mpatches.Patch(color=CURATION_OUTCOME_COLOR[o], label=o)
-                   for o in CURATION_OUTCOME_ORDER]
-        self.ax.legend(handles=handles, loc="center", frameon=False,
-                       fontsize=stylia.FONTSIZE_SMALL)
+        self.legend({o: CURATION_OUTCOME_COLOR[o] for o in CURATION_OUTCOME_ORDER},
+                    loc="center")
         self.ax.set_axis_off()
 
 
@@ -306,17 +303,12 @@ class WholecellSizesPlot(BasePlot):
         tot = mat.sum(axis=1, keepdims=True)
         tot[tot == 0] = 1
         mat = mat / tot
-        y = np.arange(len(codes))
-        lefts = np.zeros(len(codes))
-        for k, (lab, color) in enumerate(zip(SIZE_LABELS, _sequential("cobalt", nb))):
-            self.ax.barh(y, mat[:, k], left=lefts, color=color, label=lab)
-            lefts += mat[:, k]
-        self.ax.set_yticks(y)
-        self.ax.set_yticklabels(codes)
-        self.ax.invert_yaxis()
-        self.ax.legend(loc="lower right", fontsize=stylia.FONTSIZE_SMALL, title="molecules")
-        stylia.label(self.ax, xlabel="Fraction of assays", ylabel="",
-                     title="Whole-cell datasets by size")
+        seg_colors = dict(zip(SIZE_LABELS, _sequential("cobalt", nb)))
+        fracs = [{SIZE_LABELS[k]: mat[i, k] for k in range(nb)} for i in range(len(codes))]
+        stacked_hbar(self.ax, _labels(codes), fracs, SIZE_LABELS, seg_colors,
+                     always_show=tuple(SIZE_LABELS))
+        swatch_legend(self.ax, seg_colors, loc="lower right", title="molecules")
+        self.label(xlabel="Fraction of assays", title="Whole-cell datasets by size")
 
 
 # --------------------------------------------------------------------------------------------
@@ -331,36 +323,25 @@ class BinarisationActiveRatioPlot(BasePlot):
         BasePlot.__init__(self, ax=ax, cells=cells)
         self.name = "binarisation_active_ratio"
         rng = np.random.default_rng(_SEED)
-        dr_lists, sp_lists = [], []
-        for c in codes:
-            d = _read1(data_dir, c, "22_binarisation_summary.csv")
-            if d is None:
-                dr_lists.append([]); sp_lists.append([]); continue
-            dr_lists.append(d.loc[d["category"] == "DR", "active_ratio"].dropna().tolist())
-            sp_lists.append(d.loc[d["category"] == "SP", "active_ratio"].dropna().tolist())
         pos = np.arange(len(codes))
-        for lists, col, dy in [(dr_lists, _DR, -0.2), (sp_lists, _SP, 0.2)]:
-            self.ax.boxplot(lists, positions=pos + dy, vert=False, showfliers=False, widths=0.32,
-                            patch_artist=False, boxprops={"color": col}, whiskerprops={"color": col},
-                            capprops={"color": col}, medianprops={"color": col})
-            for i, data in enumerate(lists):
-                dvals = np.asarray([v for v in data if v is not None and not pd.isna(v)], dtype=float)
-                if len(dvals) == 0:
+        for cat, dy in (("DR", -0.2), ("SP", 0.2)):
+            col = "DR" if cat == "DR" else "SP"
+            for i, c in enumerate(codes):
+                d = _read1(data_dir, c, "22_binarisation_summary.csv")
+                if d is None:
                     continue
-                if len(dvals) > CAP_POINTS:
-                    dvals = rng.choice(dvals, size=CAP_POINTS, replace=False)
-                yj = pos[i] + dy + rng.uniform(-0.12, 0.12, size=len(dvals))
-                self.ax.scatter(dvals, yj, s=3, alpha=0.2, color=col, edgecolors="none", zorder=1)
+                vals = d.loc[d["category"] == cat, "active_ratio"].dropna().tolist()
+                _cat_box(self.ax, vals, pos[i] + dy, col, vert=False, width=0.32,
+                         jitter_width=0.12, point_size=3, point_alpha=0.2, rng=rng)
         self.ax.set_xlim(-0.02, 1.02)
         self.ax.set_yticks(pos)
-        self.ax.set_yticklabels(codes)
+        self.ax.set_yticklabels(_labels(codes))
         self.ax.invert_yaxis()
-        self.ax.legend(handles=_cat_handles(), loc="lower right", fontsize=stylia.FONTSIZE_SMALL)
-        stylia.label(self.ax, xlabel="Active ratio", ylabel="",
-                     title="Active ratio (DR top · SP bottom)")
+        self.legend(_CAT_LEGEND, loc="lower right")
+        self.label(xlabel="Active ratio", title="Active ratio (DR top · SP bottom)")
 
 
-class ActivityRatioFlowPlot(_MultiPanelPlot):
+class ActivityRatioFlowPlot(MultiPanelPlot):
     """Active-ratio distribution at each pipeline stage (22->26), DR and SP panels, all pathogens
     pooled. Ported from ``make_activity_ratio`` (``plot_stage_ratio``); reads the 22/23/24/25/26
     summaries."""
@@ -396,19 +377,14 @@ class ActivityRatioFlowPlot(_MultiPanelPlot):
             ("26 catch-all", stage_col(c26, "active_ratio")),
         ]
         rng = np.random.default_rng(_SEED)
-        dot = CATEGORY_COLORS[category]
         for i, (_lab, s) in enumerate(stages):
             v = np.asarray(s.dropna(), dtype=float)
             v = v[np.isfinite(v)]
             if not len(v):
                 continue
-            ax.boxplot([v], positions=[i], widths=0.6, showfliers=False, patch_artist=False,
-                       boxprops={"color": INK}, whiskerprops={"color": INK},
-                       capprops={"color": INK}, medianprops={"color": INK})
-            d = v if len(v) <= CAP_POINTS else rng.choice(v, size=CAP_POINTS, replace=False)
-            ax.scatter(i + rng.uniform(-0.18, 0.18, size=len(d)), d, s=8, alpha=0.35,
-                       color=dot, edgecolors="none", zorder=2)
-        ax.axhline(0.5, ls="--", lw=0.8, color=NEUTRAL)
+            _cat_box(ax, v, i, category, vert=True, width=0.6, jitter_width=0.18,
+                     point_size=8, point_alpha=0.35, rng=rng)
+        ref_line(ax, 0.5, axis="y")
         ax.set_ylim(-0.02, 1.02)
         ax.set_xticks(range(len(stages)))
         ax.set_xticklabels([lab for lab, _ in stages], rotation=30, ha="right")
@@ -416,7 +392,7 @@ class ActivityRatioFlowPlot(_MultiPanelPlot):
                      title=f"Active ratio by stage — {CAT_DISPLAY[category]}")
 
 
-class ActivityRatioPerPathogenPlot(_MultiPanelPlot):
+class ActivityRatioPerPathogenPlot(MultiPanelPlot):
     """Small multiples (one panel per pathogen) of the active-ratio flow across stages 22->26,
     DR vs SP grouped boxes. Ported from ``make_activity_ratio_per_pathogen``."""
 
@@ -430,21 +406,19 @@ class ActivityRatioPerPathogenPlot(_MultiPanelPlot):
         for j, code in enumerate(codes):
             ax = panels[j]
             sub = long[long["pathogen"] == code]
-            for cat, col, dx in [("DR", _DR, -0.18), ("SP", _SP, 0.18)]:
+            for cat, dx in (("DR", -0.18), ("SP", 0.18)):
                 for i, st in enumerate(stages):
                     v = sub.loc[(sub["category"] == cat) & (sub["stage"] == st), "ratio"].to_numpy()
                     if not len(v):
                         continue
-                    bp = ax.boxplot([v], positions=[i + dx], widths=0.3, showfliers=False,
-                                    patch_artist=True)
-                    bp["boxes"][0].set_facecolor(col)
-                    bp["medians"][0].set_color("black")
-            ax.axhline(0.5, ls="--", lw=0.6, color=NEUTRAL)
+                    _cat_box(ax, v, i + dx, cat, vert=True, width=0.3, jitter=False)
+            ref_line(ax, 0.5, axis="y", linewidth=0.6)
             ax.set_ylim(-0.02, 1.02)
             ax.set_xlim(-0.5, len(stages) - 0.5)
             ax.set_xticks(range(len(stages)))
             ax.set_xticklabels(stages)
-            stylia.label(ax, xlabel="", ylabel="active ratio" if j % ncols == 0 else "", title=code)
+            stylia.label(ax, xlabel="", ylabel="active ratio" if j % ncols == 0 else "",
+                         title=_plabel(code))
         for ax in panels[len(codes):]:
             ax.axis("off")
 
@@ -466,7 +440,7 @@ class ActivityRatioPerPathogenPlot(_MultiPanelPlot):
         return pd.DataFrame(rows, columns=["pathogen", "category", "stage", "ratio"])
 
 
-class CutoffSensitivityPlot(_MultiPanelPlot):
+class CutoffSensitivityPlot(MultiPanelPlot):
     """One panel per measurement unit: pathogens on y, active ratio on x, three tier markers
     (low/middle/high candidate cutoff) joined by a line; the default tier is starred. Ported
     from ``plot_cutoff_sensitivity_panel``; reads ``general/27_cutoff_sensitivity.csv``."""
@@ -475,7 +449,7 @@ class CutoffSensitivityPlot(_MultiPanelPlot):
         axs = self._new_figure(1, len(SENS_UNIT_PANELS), cells, "cutoff_sensitivity")
         df = _read1(data_dir, "general", "27_cutoff_sensitivity.csv")
         if df is None or df.empty:
-            self.is_available = False
+            self._unavailable()
             return
         tier_colors = dict(zip(CUTOFF_TIERS, _sequential("cobalt", len(CUTOFF_TIERS))[::-1]))
         for unit, title in SENS_UNIT_PANELS:
@@ -492,14 +466,14 @@ class CutoffSensitivityPlot(_MultiPanelPlot):
                     pts.append((t, float(row["active_ratio"].iloc[0]), bool(row["is_default"].iloc[0])))
             if not pts:
                 continue
-            ax.plot([v for _, v, _ in pts], [pos[i]] * len(pts), color=NEUTRAL, zorder=1)
+            ax.plot([v for _, v, _ in pts], [pos[i]] * len(pts), color=REFERENCE_LINE, zorder=1)
             for t, v, is_def in pts:
                 ax.scatter([v], [pos[i]], color=tier_colors[t], zorder=3)
                 if is_def:
                     ax.scatter([v], [pos[i]], color=INK, marker="*", zorder=4)
         ax.set_xlim(-0.02, 1.02)
         ax.set_yticks(pos)
-        ax.set_yticklabels(codes)
+        ax.set_yticklabels(_labels(codes))
         ax.invert_yaxis()
         stylia.label(ax, xlabel="Active ratio", ylabel="", title=title)
 
@@ -508,7 +482,7 @@ class CutoffSensitivityPlot(_MultiPanelPlot):
 # Pooling & modelling
 # --------------------------------------------------------------------------------------------
 
-class PoolPartitionPlot(_MultiPanelPlot):
+class PoolPartitionPlot(MultiPanelPlot):
     """Stacked bar per pathogen: molecule fraction in multi-dataset pool / singleton / not
     considered, DR and SP panels. Ported from ``plot_chemspace``; reads
     ``23_chemspace_partition.csv``."""
@@ -517,7 +491,7 @@ class PoolPartitionPlot(_MultiPanelPlot):
         axs = self._new_figure(1, 2, cells, "pool_partition")
         part = _collect(data_dir, codes, "23_chemspace_partition.csv")
         if part.empty:
-            self.is_available = False
+            self._unavailable()
             return
         for cat in CATS:
             self._panel(axs.next(), part, codes, cat)
@@ -537,18 +511,18 @@ class PoolPartitionPlot(_MultiPanelPlot):
                     continue
             f_multi.append(0.0); f_single.append(0.0); f_not.append(1.0)
         f_multi, f_single, f_not = np.array(f_multi), np.array(f_single), np.array(f_not)
-        ax.bar(x, f_multi, color=_AC.cobalt, label="multi-dataset pool")
-        ax.bar(x, f_single, bottom=f_multi, color=_AC.periwinkle, label="singleton")
-        ax.bar(x, f_not, bottom=f_multi + f_single, color=NEUTRAL, label="not considered")
+        seg = {"multi-dataset pool": hue("cobalt"), "singleton": hue("periwinkle"),
+               "not considered": REFERENCE_LINE}
+        ax.bar(x, f_multi, color=seg["multi-dataset pool"], label="multi-dataset pool")
+        ax.bar(x, f_single, bottom=f_multi, color=seg["singleton"], label="singleton")
+        ax.bar(x, f_not, bottom=f_multi + f_single, color=seg["not considered"],
+               label="not considered")
         ax.set_xticks(x)
-        ax.set_xticklabels(codes, rotation=90)
+        ax.set_xticklabels(_labels(codes), rotation=90)
         ax.set_ylim(0, 1)
-        ax.legend(loc="upper right", fontsize=stylia.FONTSIZE_SMALL)
+        swatch_legend(ax, seg, loc="upper right")
         stylia.label(ax, xlabel="", ylabel="fraction of molecules",
                      title=f"Step-23 pool partition — {CAT_DISPLAY[category]}")
-
-
-_CAT_HUE = {"DR": "cobalt", "SP": "tangerine"}  # ArticleColors hue name per category
 
 
 def _final_pools(data_dir, codes):
@@ -588,7 +562,7 @@ class PoolActiveRatiosPlot(BasePlot):
         final = _final_pools(data_dir, codes).dropna(subset=["size", "ratio"])
         final = final[final["size"] > 0]
         if final.empty:
-            self.is_available = False
+            self._unavailable()
             return
         nmax = float(final["size"].max())
         rng = np.random.default_rng(_SEED)
@@ -605,23 +579,23 @@ class PoolActiveRatiosPlot(BasePlot):
                                 color=CATEGORY_COLORS[cat], alpha=0.55, edgecolor="white",
                                 linewidth=0.5, zorder=2)
                 self.ax.hlines(float(np.median(y)), xi + dx - 0.16, xi + dx + 0.16,
-                               color="black", zorder=3)
+                               color=INK, zorder=3)
         self.ax.set_ylim(-0.08, 1.08)
         self.ax.set_yticks(np.linspace(0, 1, 6))
         self.ax.set_xticks(np.arange(len(cc)))
-        self.ax.set_xticklabels(cc, rotation=90)
-        self.ax.legend(handles=_cat_handles(), loc="upper right", fontsize=stylia.FONTSIZE_SMALL)
+        self.ax.set_xticklabels(_labels(cc), rotation=90)
+        self.legend(_CAT_LEGEND, loc="upper right")
         # Pool-size key: drawn manually in axes-fraction coords rather than via ax.legend() —
         # matplotlib's Legend cannot reliably vertically center a label against a marker this
         # much larger than a normal legend glyph, so dot and label are placed at the same
         # explicit y instead.
         for v, y in zip((1_000, 50_000), (0.94, 0.87)):
             self.ax.scatter([0.06], [y], s=self._area_for(v, nmax), transform=self.ax.transAxes,
-                            color=NEUTRAL, alpha=0.55, edgecolor="white", linewidth=0.5,
+                            color=REFERENCE_LINE, alpha=0.55, edgecolor="white", linewidth=0.5,
                             clip_on=False)
             self.ax.text(0.11, y, f"{v:,} molecules", transform=self.ax.transAxes,
                         va="center", fontsize=stylia.FONTSIZE_SMALL)
-        stylia.label(self.ax, xlabel="", ylabel="active ratio", title="Final pool active ratio")
+        self.label(xlabel="", ylabel="active ratio", title="Final pool active ratio")
 
     def _area_for(self, n, nmax):
         return self._SIZE_MIN + (np.asarray(n, dtype=float) / nmax) * (self._SIZE_MAX - self._SIZE_MIN)
@@ -637,7 +611,7 @@ class PoolCvAurocPlot(BasePlot):
         self.name = "pool_cv_auroc"
         final = _final_pools(data_dir, codes)
         if final.empty or final["auroc"].dropna().empty:
-            self.is_available = False
+            self._unavailable()
             return
         rng = np.random.default_rng(_SEED)
         cc = _final_pool_codes(final, codes)
@@ -645,25 +619,17 @@ class PoolCvAurocPlot(BasePlot):
             for cat, dx in (("DR", -0.2), ("SP", 0.2)):
                 v = final[(final["pathogen"] == c) & (final["category"] == cat)][
                     "auroc"].dropna().to_numpy(float)
-                if not len(v):
-                    continue
-                bp = self.ax.boxplot([v], positions=[xi + dx], widths=0.34, showfliers=False,
-                                     patch_artist=True)
-                bp["boxes"][0].set_facecolor(_AC.get(_CAT_HUE[cat], lighten=0.55))
-                bp["medians"][0].set_color("black")
-                xj = xi + dx + rng.uniform(-0.1, 0.1, size=len(v))
-                self.ax.scatter(xj, v, s=6, alpha=0.6, color=CATEGORY_COLORS[cat],
-                                edgecolors="none", zorder=3)
-        self.ax.axhline(0.7, ls="--", lw=0.8, color=NEUTRAL)
+                _cat_box(self.ax, v, xi + dx, cat, vert=True, width=0.34, jitter_width=0.1,
+                         point_size=6, point_alpha=0.6, rng=rng)
+        self.ref_line(0.7, axis="y")
         self.ax.set_ylim(0.4, 1.02)
         self.ax.set_xticks(np.arange(len(cc)))
-        self.ax.set_xticklabels(cc, rotation=90)
-        self.ax.legend(handles=_cat_handles(), loc="lower right", fontsize=stylia.FONTSIZE_SMALL)
-        stylia.label(self.ax, xlabel="", ylabel="final pool CV AUROC",
-                     title="Final pool modellability")
+        self.ax.set_xticklabels(_labels(cc), rotation=90)
+        self.legend(_CAT_LEGEND, loc="lower right")
+        self.label(xlabel="", ylabel="final pool CV AUROC", title="Final pool modellability")
 
 
-class MergeAurocPlot(_MultiPanelPlot):
+class MergeAurocPlot(MultiPanelPlot):
     """Grouped box per pathogen: baseline (pre-merge) vs grown (post-merge) pool CV AUROC,
     DR and SP panels (0.70 guide line). Ported from ``plot_auroc_lift``; reads
     ``25_pool_summary.csv``."""
@@ -672,29 +638,26 @@ class MergeAurocPlot(_MultiPanelPlot):
         axs = self._new_figure(1, 2, cells, "merge_auroc")
         ps = _collect(data_dir, codes, "25_pool_summary.csv")
         if ps.empty:
-            self.is_available = False
+            self._unavailable()
             return
         for cat in CATS:
             self._panel(axs.next(), ps, codes, cat)
 
     def _panel(self, ax, ps, codes, category):
-        base_fill = _AC.get("turquoise", lighten=0.55)
+        base_fill = hue("turquoise", lighten=0.55)
+        grown_fill = hue("turquoise")
         sub = ps[ps["category"] == category]
         for xi, c in enumerate(codes):
             g = sub[sub["pathogen"] == c]
             for dx, col, fill in [(-0.2, "baseline_auroc", base_fill),
-                                  (0.2, "grown_auroc", _AC.turquoise)]:
+                                  (0.2, "grown_auroc", grown_fill)]:
                 v = g[col].dropna().to_numpy(float)
-                if not len(v):
-                    continue
-                bp = ax.boxplot([v], positions=[xi + dx], widths=0.34, showfliers=False,
-                                patch_artist=True)
-                bp["boxes"][0].set_facecolor(fill)
-                bp["medians"][0].set_color("black")
-        ax.axhline(0.7, ls="--", lw=0.8, color=NEUTRAL)
+                box_with_jitter(ax, v, xi + dx, fill, face=fill, vert=True, width=0.34,
+                                jitter=False)
+        ref_line(ax, 0.7, axis="y")
         ax.set_ylim(0.4, 1.02)
         ax.set_xticks(np.arange(len(codes)))
-        ax.set_xticklabels(codes, rotation=90)
+        ax.set_xticklabels(_labels(codes), rotation=90)
         stylia.label(ax, xlabel="", ylabel="pool CV AUROC",
                      title=f"Step-25 baseline → grown AUROC — {CAT_DISPLAY[category]}")
 
@@ -714,23 +677,23 @@ class LowDataAurocPlot(BasePlot):
                 rows += d.to_dict("records")
         df = pd.DataFrame(rows)
         if df.empty or "auroc" not in df.columns:
-            self.is_available = False
+            self._unavailable()
             return
         df = df[df["auroc"].notna()].copy()
         if df.empty:
-            self.is_available = False
+            self._unavailable()
             return
-        df["label"] = df["pathogen"] + " " + df["category"]
+        df["label"] = df["pathogen"].map(_plabel) + " " + df["category"]
         df = df.sort_values("auroc", ascending=False)
         colors = [AUROC_PASS_COLORS["pass"] if a >= CATCHALL_MIN_AUROC else AUROC_PASS_COLORS["fail"]
                   for a in df["auroc"]]
         self.ax.bar(np.arange(len(df)), df["auroc"].to_numpy(), color=colors)
-        self.ax.axhline(CATCHALL_MIN_AUROC, color=NEUTRAL, linestyle="--")
+        self.ref_line(CATCHALL_MIN_AUROC, axis="y")
         self.ax.set_xticks(np.arange(len(df)))
         self.ax.set_xticklabels(df["label"], rotation=90)
         self.ax.set_ylim(0.5, 1.0)
-        stylia.label(self.ax, xlabel="", ylabel="catch-all CV AUROC",
-                     title="Low-data catch-all pools (teal ≥0.70 / amber <0.70, reference)")
+        self.label(xlabel="", ylabel="catch-all CV AUROC",
+                   title="Low-data catch-all pools (teal ≥0.70 / amber <0.70, reference)")
 
 
 class ChemblCoveragePlot(BasePlot):
@@ -743,20 +706,19 @@ class ChemblCoveragePlot(BasePlot):
         self.name = "chembl_coverage"
         df = _read1(data_dir, "general", "27_chembl_coverage.csv")
         if df is None or df.empty:
-            self.is_available = False
+            self._unavailable()
             return
         total = int(df["total_bioactive_compounds"].iloc[0])
         related = int(df.loc[df["is_union"], "n_cleaned_inchikeys"].iloc[0])
-        n_pathogens = int((~df["is_union"]).sum())
         if not total:
-            self.is_available = False
+            self._unavailable()
             return
         rest = max(total - related, 0)
-        self.ax.pie([related, rest], colors=[_AC.crimson, _AC.get("silver", lighten=0.6)],
+        self.ax.pie([related, rest], colors=[hue("crimson"), hue("silver", lighten=0.6)],
                     startangle=90, counterclock=False, wedgeprops={"width": 0.42})
         self.ax.text(0, 0, f"{100 * related / total:.1f}%", ha="center", va="center")
         # Short single-line title — the panel is only ~45 mm and gets overlapped with the funnel.
-        stylia.label(self.ax, xlabel="", ylabel="", title="ChEMBL coverage")
+        self.label(title="ChEMBL coverage")
 
 
 class PipelineFunnelPlot(BasePlot):
@@ -769,7 +731,7 @@ class PipelineFunnelPlot(BasePlot):
         self.name = "pipeline_funnel"
         m = _read1(data_dir, "general", "27_master_table.csv")
         if m is None or m.empty:
-            self.is_available = False
+            self._unavailable()
             return
         n_nodes = len(_collect(data_dir, codes, "23_first_pass.csv"))
         n_pool23 = (m.dropna(subset=["pool_id_23"])
@@ -788,32 +750,20 @@ class PipelineFunnelPlot(BasePlot):
         # Crimson to match the ChEMBL-coverage donut's covered slice (the two are overlapped).
         floor = max(vals.min() / 3.0, 1.0)
         self.ax.set_ylim(floor, vals.max() * 1.8)
-        self.ax.bar(x, vals - floor, bottom=floor, color=_AC.crimson)
+        self.ax.bar(x, vals - floor, bottom=floor, color=hue("crimson"))
         for xi, v in zip(x, vals):
             self.ax.text(xi, v, f"{int(v):,}", ha="center", va="bottom",
                          fontsize=stylia.FONTSIZE_SMALL)
         self.ax.set_xticks(x)
         self.ax.set_xticklabels([s for s, _ in stages])
-        stylia.label(self.ax, xlabel="", ylabel="count (log)", title="Consolidation")
-
-
-# --------------------------------------------------------------------------------------------
-# Small shared helpers
-# --------------------------------------------------------------------------------------------
-
-_SEED = None  # set in save_curation_figures from default.RANDOM_SEED
-
-
-def _cat_handles():
-    return [mpatches.Patch(color=_DR, label="Dose Response"),
-            mpatches.Patch(color=_SP, label="Single Point")]
+        self.label(xlabel="", ylabel="count (log)", title="Consolidation")
 
 
 # --------------------------------------------------------------------------------------------
 # Entry point
 # --------------------------------------------------------------------------------------------
 
-def save_curation_figures(data_dir, output_dir, random_seed=42):
+def save_curation_figures(data_dir, output_dir, random_seed=42, name_map=None):
     """Build every curation panel as its own Nature-sized figure and save it.
 
     Each panel is standalone (self-sized from its ``cells`` footprint) and written as PNG +
@@ -825,9 +775,12 @@ def save_curation_figures(data_dir, output_dir, random_seed=42):
     data_dir    : staged curation tree (data/raw/chembl_curation) with <pathogen>/ + general/.
     output_dir  : directory to write png/, pdf/ and figure_cells.json into.
     random_seed : seed for jitter/sampling (default RANDOM_SEED).
+    name_map    : optional pathogen code -> full binomial name, so axis ticks show abbreviated
+                  genus names ("A. baumannii"). When None, the raw codes are shown.
     """
-    global _SEED
+    global _SEED, _NAMES
     _SEED = random_seed
+    _NAMES = name_map
 
     codes = available_pathogens(data_dir)
     print(f"Pathogens: {len(codes)} — {', '.join(codes)}")

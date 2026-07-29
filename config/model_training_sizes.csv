@@ -1,0 +1,52 @@
+eosid,title,pathogen,training_size
+eos21dr,Antimicrobial activity prediction against Acinetobacter baumannii from public ChEMBL data,abaumannii,6028
+eos2e3s,Antimicrobial activity prediction against Pseudomonas aeruginosa from public ChEMBL data,paeruginosa,30612
+eos3dys,CoADD antimicrobial prediction,abaumannii,82143
+eos3dys,CoADD antimicrobial prediction,calbicans,81948
+eos3dys,CoADD antimicrobial prediction,kpneumoniae,81948
+eos3dys,CoADD antimicrobial prediction,paeruginosa,82143
+eos3dys,CoADD antimicrobial prediction,saureus,81954
+eos43d6,Antimicrobial activity prediction against Mycobacterium tuberculosis from public ChEMBL and PubChem data,mtuberculosis,544107
+eos4an7,Antimicrobial activity prediction against Plasmodium falciparum from public ChEMBL and PubChem data,pfalciparum,749078
+eos5eya,Antimicrobial activity prediction against Escherichia coli from public ChEMBL and PubChem data,ecoli,375280
+eos5q52,Antimicrobial activity prediction against Streptococcus pneumoniae from public ChEMBL data,spneumoniae,9525
+eos5qya,Antimicrobial activity prediction against Neisseria gonorrhoeae from public ChEMBL data,ngonorrhoeae,438
+eos6wb7,Antimicrobial activity prediction against Klebsiella pneumoniae from public ChEMBL data,kpneumoniae,14612
+eos7iak,Antimicrobial activity prediction against Campylobacter spp. from public ChEMBL data,campylobacter,96
+eos81zy,Antimicrobial activity prediction against Enterococcus faecium from public ChEMBL data,efaecium,5309
+eos8jx6,Antimicrobial activity prediction against Candida albicans from public ChEMBL and PubChem data,calbicans,361611
+eos8lcw,Antimicrobial activity prediction against Staphylococcus aureus from public ChEMBL and PubChem data,saureus,436380
+eos8v1a,Antimicrobial activity prediction against Schistosoma mansoni from public ChEMBL data,smansoni,1864
+eos9bpi,Antimicrobial activity prediction against Enterobacter spp. from public ChEMBL data,enterobacter,3410
+eos9eyo,Antimicrobial activity prediction against Helicobacter pylori from public ChEMBL data,hpylori,779
+eos18ie,Antibiotic activity prediction against Staphylococcus aureus,saureus,39312
+eos1lb5,Mycobacterium cell wall penetration,mtuberculosis,279
+eos1soi,Antimicrobial activity against non-growing bacteria,ecoli,6454
+eos24jm,QcrB Inhibition (M. tuberculosis),mtuberculosis,352
+eos2l0q,Anti-schistosomiasis activity,smansoni,2331
+eos3804,Inhibition of Acinetobacter baumannii growth,abaumannii,7500
+eos3lyd,Efflux pump avoidance in gram-negative bacteria,ecoli,740
+eos3ujl,Mtb cell wall permeability,mtuberculosis,5371
+eos46ev,Mycobacterium tuberculosis inhibitor prediction,mtuberculosis,8518
+eos4e40,Broad spectrum antibiotic activity,ecoli,2335
+eos4n4d,Weighted Gram-Negative Accumulation Prediction,ecoli,180
+eos4r1g,Penetration in gram-negative bacteria,ecoli,180
+eos4rta,Antimalarial activity (MMV Data),pfalciparum,200000
+eos4zfy,MAIP: antimalarial activity prediction,pfalciparum,5000000
+eos5bsw,Small molecule retention by Gram-negative bacteria based on a large-scale LC/MS screen,ecoli,8410
+eos5cl7,Growth Inhibitors of Neisseria gonorrhoeae,ngonorrhoeae,282
+eos5jv3,MycoPermeNet,mtuberculosis,1572
+eos5nqn,GNEProp Escherichia coli antibiotic activity,ecoli,2000000
+eos69jj,N.gonorrhoeae antimicrobial activity,ngonorrhoeae,38650
+eos6m2k,MolE antimicrobial potential,ecoli,1197
+eos7ike,Entry-way rules (eNTRy) for gram-negative bacteria,ecoli,180
+eos7kpb,H3D virtual screening cascade light,mtuberculosis,3244
+eos7kpb,H3D virtual screening cascade light,pfalciparum,3289
+eos7l5m,Efflux susceptibility in gram-negative bacteria,ecoli,4500
+eos7yti,Antimalarial activity from OSM,pfalciparum,413
+eos80ch,Antimalarial activity for sexual stage and asexual blood stage (ABS),pfalciparum,12374
+eos8d8a,Membrane permeability in Mycobacterium tuberculosis,mtuberculosis,3815
+eos9f7c,Permeation of compounds across the outer membrane of P. aeruginosa,paeruginosa,1260
+eos9n1s,Hemozoin inhibitor prediction using simple physicochemical parameters,pfalciparum,9600
+eos9x3z,Gram-negative activity as a permeability proxy,ecoli,1887
+eos9x3z,Gram-negative activity as a permeability proxy,saureus,1887

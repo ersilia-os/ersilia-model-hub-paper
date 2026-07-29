@@ -24,15 +24,26 @@ import json
 import os
 import sys
 
+import pandas as pd
+
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root, "..", "src"))
 
 from plots_chembl_curation import save_curation_figures  # noqa: E402
 from default import RANDOM_SEED  # noqa: E402
 
+config_dir = os.path.join(root, "..", "config")
 data_dir = os.path.join(root, "..", "data", "raw", "chembl_curation")
 output_dir = os.path.join(root, "..", "output", "02_chembl_data_curation")
 os.makedirs(output_dir, exist_ok=True)
+
+# Pathogen code -> full binomial, so the figures show abbreviated genus names ("A. baumannii")
+# consistently with the other steps instead of the raw squashed codes.
+pathogen_names = (
+    pd.read_csv(os.path.join(config_dir, "pathogens_of_interest.csv"))
+    .set_index("code")["pathogen"]
+    .to_dict()
+)
 
 # Provenance: record the ChEMBL snapshot the curation ran against.
 space_path = os.path.join(data_dir, "general", "27_chembl_space.json")
@@ -42,4 +53,5 @@ if os.path.exists(space_path):
     print(f"ChEMBL snapshot: {space.get('chembl_db')} "
           f"({space.get('bioactive_compounds')} bioactive compounds)")
 
-save_curation_figures(data_dir=data_dir, output_dir=output_dir, random_seed=RANDOM_SEED)
+save_curation_figures(data_dir=data_dir, output_dir=output_dir, random_seed=RANDOM_SEED,
+                      name_map=pathogen_names)

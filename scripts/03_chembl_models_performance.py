@@ -7,39 +7,60 @@ concatenated, coloured by mean AUROC) and horizontal paired rank boxplots
 (all folds pooled). Per-fold AUROC comes from each {name}.csv; the per-compound
 probability and rank arrays come from the matching {name}_folds.json sidecar.
 
+The per-pathogen folders are the pipeline's **step 09** reports (196 trained models),
+which is a superset of the 193 models retained by step 10: three models were trained
+and reported but then discarded for mean AUROC < 0.7 (calbicans/588506,
+hpylori/SP_catchall, pfalciparum/743093_merged2). All 196 are plotted; the summary
+CSVs carry the step-10 verdict in `retained` / `discard_reason` so the distinction is
+auditable. (The other three step-10 discards are `untrainable` and never produced a
+step-09 report, so they cannot appear here at all.)
+
 Requires
 --------
+    config/pathogens_of_interest.csv
     data/raw/chembl_model_reports/{pathogen}/{name}.csv
     data/raw/chembl_model_reports/{pathogen}/{name}_folds.json
+    data/raw/chembl_model_reports/10_reports/10_reports.csv
+    data/raw/chembl_model_reports/10_reports/10_discarded_models.csv
 
 Outputs
 -------
     output/03_chembl_models_performance/{pathogen}_auroc_summary.csv
-    output/03_chembl_models_performance/{pathogen}_roc_curves.png
-    output/03_chembl_models_performance/{pathogen}_rank_boxplots.png
+    output/03_chembl_models_performance/individual_plots/png/{pathogen}_*.png
+    output/03_chembl_models_performance/individual_plots/pdf/{pathogen}_*.pdf
+    output/03_chembl_models_performance/individual_plots/figure_cells.json
+
+The per-pathogen panels are intermediate results — 30 figures, too many for the paper.
+They land in `individual_plots/`, leaving the top level of the output dir for the
+condensed cross-pathogen figures.
 """
 
 import json
-import math
 import os
 import sys
 
 import numpy as np
 import pandas as pd
-import stylia
 
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root, "..", "src"))
 
-from plotting_utils import plot_rank_boxplots, plot_roc_single
+# Importing the plotting stack applies the publication presets (print/article).
+from plots_chembl_performance import (
+    save_consensus_figure,
+    save_performance_figures,
+    write_figure_cells,
+)
 
+config_dir = os.path.join(root, "..", "config")
 reports_dir = os.path.join(root, "..", "data", "raw", "chembl_model_reports")
+curation_dir = os.path.join(root, "..", "data", "raw", "chembl_curation")
 output_dir = os.path.join(root, "..", "output", "03_chembl_models_performance")
+# One panel per pathogen is an intermediate result, not a paper figure — they are
+# kept apart from the condensed cross-pathogen figures that go in output_dir itself.
+individual_dir = os.path.join(output_dir, "individual_plots")
 os.makedirs(output_dir, exist_ok=True)
-
-# Format: print | Style: article
-stylia.set_format("print")
-stylia.set_style("article")
+os.makedirs(individual_dir, exist_ok=True)
 
 
 def load_models(pathogen_dir):
@@ -50,8 +71,13 @@ def load_models(pathogen_dir):
     sidecar (keyed by fold, each with y_true / y_hat / y_rank).
 
     Returns a list of dicts, one per model:
-        name, mean_auroc, std_auroc, y_true, y_pred,
+        name, stem, mean_auroc, std_auroc, y_true, y_pred,
         rank_actives, rank_inactives   (all folds pooled, out-of-fold)
+
+    ``stem`` is the file stem, always a string, and is the join key against the
+    step-10 tables. The in-file ``model_name`` column is *not* usable for that: 26
+    models are named with digits only (e.g. 1242), so pandas types them as int64
+    here and the join would silently miss them.
     """
     models = []
     for fname in sorted(os.listdir(pathogen_dir)):
@@ -96,6 +122,7 @@ def load_models(pathogen_dir):
 
         models.append({
             "name": model_name,
+            "stem": fname[:-4],
             "mean_auroc": mean_auroc,
             "std_auroc": std_auroc,
             "y_true": y_true.tolist(),
@@ -106,6 +133,28 @@ def load_models(pathogen_dir):
 
     return models
 
+
+# Pathogen code -> full binomial, used for the panel titles ("calbicans" -> "C. albicans").
+pathogen_names = (
+    pd.read_csv(os.path.join(config_dir, "pathogens_of_interest.csv"))
+    .set_index("code")["pathogen"]
+    .to_dict()
+)
+
+# Step-10 verdict per model. `name` is forced to str on both sides because the
+# purely-numeric model names (1242, 588506, ...) would otherwise be typed as int64
+# in one table and str in the other, and the lookup would miss them.
+step10_dir = os.path.join(reports_dir, "10_reports")
+retained_keys = set(
+    pd.read_csv(os.path.join(step10_dir, "10_reports.csv"), dtype={"name": str})
+    .apply(lambda r: (r["pathogen"], r["name"]), axis=1)
+)
+discard_reasons = {
+    (r["pathogen"], r["name"]): r["reason"]
+    for _, r in pd.read_csv(
+        os.path.join(step10_dir, "10_discarded_models.csv"), dtype={"name": str}
+    ).iterrows()
+}
 
 # "10_reports" is the aggregated-summary subdir staged by 00_download_data.py,
 # not a pathogen — exclude it from the per-pathogen iteration.
@@ -119,6 +168,21 @@ if not pathogens:
     print(f"No pathogen subdirectories found in {reports_dir}. Exiting.")
     sys.exit(0)
 
+# Unique cleaned molecules per pathogen (for the consensus-dot size); staged step-02 summary.
+coverage_path = os.path.join(curation_dir, "general", "27_chembl_coverage.csv")
+mol_counts = {}
+if os.path.exists(coverage_path):
+    cov = pd.read_csv(coverage_path)
+    if "is_union" in cov.columns:
+        cov = cov[cov["is_union"] == False]  # noqa: E712 — per-pathogen rows, not the union
+    mol_counts = dict(zip(cov["pathogen"], cov["n_cleaned_inchikeys"]))
+else:
+    print(f"[WARN] {coverage_path} not found — consensus dots will use a default size")
+
+footprints = {}
+plotted_keys = set()
+consensus_entries = []  # per-pathogen retained CV AUROCs for the condensed summary figure
+
 for pathogen in pathogens:
     pathogen_dir = os.path.join(reports_dir, pathogen)
     print(f"\n[{pathogen}] Loading models...")
@@ -129,37 +193,57 @@ for pathogen in pathogens:
         continue
 
     print(f"  {len(models)} models loaded.")
+    plotted_keys.update((pathogen, m["stem"]) for m in models)
 
-    # AUROC summary CSV
+    # AUROC summary CSV, carrying the step-10 keep/discard verdict
     summary_df = pd.DataFrame([
         {"model": m["name"], "mean_auroc": round(m["mean_auroc"], 4),
-         "std_auroc": round(m["std_auroc"], 4)}
+         "std_auroc": round(m["std_auroc"], 4),
+         "retained": (pathogen, m["stem"]) in retained_keys,
+         "discard_reason": discard_reasons.get((pathogen, m["stem"]), "")}
         for m in models
     ]).sort_values("mean_auroc", ascending=False)
     summary_path = os.path.join(output_dir, f"{pathogen}_auroc_summary.csv")
     summary_df.to_csv(summary_path, index=False)
-    print(f"  -> {summary_path}")
+    n_dropped = int((~summary_df["retained"]).sum())
+    note = f" ({n_dropped} discarded at step 10)" if n_dropped else ""
+    print(f"  -> {summary_path}{note}")
 
-    # ROC curves — one subplot per model, sorted descending by mean AUROC
-    n_models = len(models)
-    ncols = min(n_models, 4)
-    nrows = math.ceil(n_models / ncols)
-    cm = stylia.FadingColormap("cobalt")
-    cm.fit(np.array([0.5, 1.0]))
-    fig, axs = stylia.create_figure(nrows, ncols)
-    for m in sorted(models, key=lambda x: x["mean_auroc"], reverse=True):
-        color = cm.transform(np.array([m["mean_auroc"]]))[0]
-        plot_roc_single(axs.next(), m["y_true"], m["y_pred"], title=m["name"], color=color)
-    roc_path = os.path.join(output_dir, f"{pathogen}_roc_curves.png")
-    stylia.save_figure(roc_path)
-    print(f"  -> {roc_path}")
+    # Retained-only CV AUROCs feed the condensed cross-pathogen consensus figure.
+    consensus_entries.append({
+        "code": pathogen,
+        "pathogen": pathogen_names.get(pathogen, pathogen),
+        "aurocs": summary_df.loc[summary_df["retained"], "mean_auroc"].tolist(),
+        "n_molecules": mol_counts.get(pathogen),
+    })
 
-    # Rank boxplots — height scales with number of models
-    bx_height = max(0.5, n_models * 0.07)
-    fig, axs = stylia.create_figure(1, 1, height=bx_height)
-    plot_rank_boxplots(axs.next(), models, title=pathogen)
-    bx_path = os.path.join(output_dir, f"{pathogen}_rank_boxplots.png")
-    stylia.save_figure(bx_path)
-    print(f"  -> {bx_path}")
+    # ROC grid + rank boxplots, both as PNG + vector PDF on the 3 cm cell grid
+    figs = save_performance_figures(pathogen, models, individual_dir, pathogen_names)
+    footprints.update(figs)
+    for name, cells in figs.items():
+        print(f"  -> {name} ({cells[0]}x{cells[1]} cells)")
 
-print("\nDone.")
+manifest = write_figure_cells(footprints, individual_dir)
+print(f"\n-> {manifest}")
+
+# Condensed cross-pathogen summary (retained models) at the top level of output_dir.
+consensus_fp = save_consensus_figure(consensus_entries, output_dir)
+if consensus_fp:
+    write_figure_cells(consensus_fp, output_dir)
+    for name, cells in consensus_fp.items():
+        print(f"-> {name} ({cells[0]}x{cells[1]} cells)")
+
+# Reconcile step 09 (plotted) against step 10 (retained + discarded). Anything in
+# neither table means the staged 10_reports/ is out of sync with 09_reports/.
+unaccounted = plotted_keys - retained_keys - set(discard_reasons)
+missing_reports = retained_keys - plotted_keys
+print(f"\nPlotted (step 09): {len(plotted_keys)} | retained (step 10): "
+      f"{len(plotted_keys & retained_keys)} | discarded: "
+      f"{len(plotted_keys & set(discard_reasons))}")
+if unaccounted:
+    print(f"  [WARN] {len(unaccounted)} plotted models in neither step-10 table: "
+          f"{sorted(unaccounted)[:5]}")
+if missing_reports:
+    print(f"  [WARN] {len(missing_reports)} retained models have no step-09 report: "
+          f"{sorted(missing_reports)[:5]}")
+print("Done.")
