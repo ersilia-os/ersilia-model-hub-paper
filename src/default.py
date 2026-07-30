@@ -31,6 +31,27 @@ SUBTASK_PARENT = {
     "Generation": "Sampling",
 }
 
+# Airtable records each model's container runtime benchmark in five columns, one per input batch
+# size. A value of -1 means the benchmark was never run for that model — NOT that it took no time —
+# so those rows must be skipped, never treated as a measurement of zero.
+RUNTIME_COLUMNS = {
+    1: "Computational Performance 1",
+    10: "Computational Performance 2",
+    100: "Computational Performance 3",
+    1_000: "Computational Performance 4",
+    10_000: "Computational Performance 5",
+}
+RUNTIME_NOT_MEASURED = -1
+#: Batch size reported in the paper figure. Changing this changes which models the runtime panel can
+#: show at all, because coverage collapses as the batch grows: at 100 molecules it is 129/131
+#: Annotation, 57/58 Representation and 10/19 Sampling; at 1,000 it is 123/131, 55/58 and **0/19**.
+#: 100 is chosen so generative models appear, and that is the whole reason — at this batch size the
+#: median CP3/CP1 ratio is 0.86, i.e. running 100 molecules takes no longer than running 1, so for
+#: annotation and representation models the number is dominated by container startup rather than
+#: per-molecule work. It is still the wall-clock a user waits for; it is NOT a throughput measure.
+RUNTIME_BATCH = 100
+RUNTIME_COLUMN = RUNTIME_COLUMNS[RUNTIME_BATCH]
+
 # Shorter display labels for crowded metadata figure axes.
 SUBTASK_DISPLAY = {
     "Property calculation or prediction": "Property prediction",

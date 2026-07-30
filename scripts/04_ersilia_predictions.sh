@@ -116,13 +116,31 @@ fi
 
 # --- Model list --------------------------------------------------------------
 [ -f "$CONFIG_CSV" ] || { echo "ERROR: config not found: $CONFIG_CSV" >&2; exit 1; }
-mapfile -t models < <(tail -n +2 "$CONFIG_CSV" | cut -d, -f3 | sed '/^$/d')
+# Read loop rather than `mapfile`: mapfile is a bash 4+ builtin and macOS ships
+# bash 3.2, where it fails silently under `set -u` and leaves the list empty.
+models=()
+while IFS= read -r m || [ -n "$m" ]; do   # `|| [ -n ... ]` keeps a last line with no trailing newline
+    [ -n "$m" ] && models+=("$m")
+done < <(tail -n +2 "$CONFIG_CSV" | cut -d, -f3 | sed '/^$/d')
 
 # Append the CoAdd model (read from src/default.py; fall back to eos3dys).
 coadd_model="$(grep -oE 'COADD_MODEL_ID[[:space:]]*=[[:space:]]*"[^"]+"' "$REPO_ROOT/src/default.py" \
                | head -1 | grep -oE 'eos[0-9a-z]+' || true)"
 coadd_model="${coadd_model:-eos3dys}"
 models+=("$coadd_model")
+
+# Optional MODELS override: a space-separated list of eosids that replaces the
+# default (config order + CoAdd model). Lets you control ordering or run a subset
+# without editing config/pathogens_of_interest.csv. Motivation: per-batch cost
+# varies ~36x across these models (measured on the CoAdd library, batch size 100:
+# eos5qya ~5 s, eos2e3s ~11 s, eos4an7 ~182 s -> ~50 h for one model), so a slow
+# model early in the list blocks every faster one behind it.
+#   MODELS="eos8lcw eos3dys" bash scripts/04_ersilia_predictions.sh
+if [ -n "${MODELS:-}" ]; then
+    models=()
+    for m in $MODELS; do models+=("$m"); done
+    log "MODELS override active (${#models[@]}): ${models[*]}"
+fi
 
 if [ "$SMOKE" = "1" ]; then
     models=("${models[0]}")

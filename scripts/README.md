@@ -14,12 +14,122 @@ pulls Section 1 from eosvc instead of the companion repos.
 (quality weights, decision cutoffs, discarded-model reasons).
 
 ## 01_ersilia_metadata.py
-Analyses the Airtable model metadata (Ready models only) and renders each summary field as its own
-figure, plus a pathogen circle-treemap. Value counts for all eight metadata fields are written as
-`*_counts.csv` to `output/01_models_metadata/`.
-**Shown vs counted:** 6 of the 8 counted fields are plotted (Task and Subtask merged into one
-panel); License and Publication Type are counted but not plotted. Biomedical Area and Target
-Organism are capped at the top 10 categories in the figure (full counts remain in the CSVs).
+Analyses the Airtable model metadata (Ready models only) and renders 14 panels — the task/subtask
+breakdown, source type and output composition, biomedical area, target organism, licensing, tags,
+container metrics and two pathogen treemaps.
+**Shown vs counted:** value counts for every counted field are written to `*_counts.csv`, but not all
+are plotted — Publication Type is counted only. Biomedical Area and Target Organism are capped at the
+top 10 categories in the figure (full counts remain in the CSVs).
+
+**Stacked panels:** Source Type and Output are each drawn as one stacked bar panel segmented by
+Subtask, so a single panel carries the joint distribution instead of two. Segments use the subtask
+palette (shades of the parent task's hue), never a palette of their own — the field is already encoded
+by the bar position. Cross-tabs are written as `<field>_by_subtask_counts.csv`.
+
+**Task hues:** Annotation = crimson, Representation = amber, Sampling = lime (`TASK_HUES`, the one
+place to change them). These are the same three hues as `SOURCE_TYPE_COLORS`, which now survives only
+for the two pathogen panels' dots/cells — the two never carry colour in the same panel.
+
+**Task/subtask alternatives** — two ways to draw the same 208 models, on the same colours:
+- `task_subtask` — bars. Best for reading counts. No legend: each bar is labelled next to its own
+  colour, which makes this panel the subtask colour key.
+- `task_subtask_waffle` — one square per model, 16 × 13 = 208 exactly. Shows n rather than stating it;
+  reading 52 vs 39 means counting. Carries its own legend (with counts), so it is self-contained and
+  can serve as the key too. That legend band is also what squares the panel — the grid alone crops to
+  1.23, with the legend it lands at 1.05.
+
+**Legends:** the two `*_by_subtask` stacks carry none (no room at 60 × 30 mm, and they are meant to
+sit beside a key panel), so if one goes into the figure, `task_subtask` or `task_subtask_waffle` must
+travel with it. The waffle and the `license` bar have their own.
+
+**Biomedical Area / Target Organism colours:** every *named* area and organism consists purely of
+Annotation models (`Any` is where all the Representation and Sampling models sit), so the named bars
+are drawn in the **Annotation hue** — no separate palette — and `Any` in **silver**, the reserved
+neutral for a catch-all. Neither panel carries a key, so the caption must explain the two colours.
+
+**Known upstream mis-annotation:** `eos93h2` (`image-mol-gpcr`) is recorded in Airtable as
+Representation / Featurization with Target Organism = *Homo sapiens*, but it should be an Annotation
+model — being fixed at source. It is the only thing that breaks the "named organisms are
+Annotation-only" rule, and it is already drawn as an Annotation row, so these two panels need no
+change when the fix lands. When it does, **Task and Subtask must be changed together** — see the
+warning in `docs/figure_conventions.md`, since a Task-only edit would leave the subtask-coloured
+panels disagreeing with the task-coloured ones without erroring.
+
+**License panel.** Bars use *simplified* identifiers: `-or-later` / `-only` are collapsed, so
+GPL-3.0-or-later (51) + GPL-3.0-only (20) = one **GPL-3.0 bar (71), which overtakes MIT (69)**. This
+loses a real legal distinction, so the ungrouped `license_counts.csv` is kept next to
+`license_grouped_counts.csv`. The 27 models with no license are shown as **Not recorded**, not
+dropped. Colour = reuse class: Permissive 104 (turquoise), Copyleft 76 (periwinkle), Non-commercial 1
+(**fuchsia**, so a single-model bar is still visible), Not recorded 27 (silver).
+**That split is a coarse classification, not legal advice** —
+CC-BY-4.0 and CC0-1.0 are counted permissive despite not being OSI-approved for software. The 4
+AGPL-3.0 models are all the same upstream project (`molgrad`), which does declare AGPL-3.0 on GitHub.
+
+**Tag cloud.** All 59 tags from the free-text `Tag` field, sized by model count. **The only raster
+panel in the repo** — `wordcloud` renders a bitmap, so this PDF embeds an image rather than vector
+text. **Size is ordinal only:** frequencies are fed in as sqrt(count) and `relative_scaling=0.5`, so
+the 1–49 count range compresses to 5.5–26.8 pt, and a word's area also depends on its character count
+(*Gram-negative bacteria*, 13 models, covers more panel than *Descriptor*, 34). Read ranks coarsely;
+exact counts are in `tag_counts.csv`. **Its 90 mm size is a legibility requirement, not a layout
+choice** — at 60 mm the ten single-model tags fall to 2.9 pt. The script prints the measured smallest
+type size and how many tags fall below the 5 pt print floor on every run; keep that at 0.
+
+**Technical panels.** `runtime_100` and `image_size` are boxes-with-dots per Task on a log y axis, at
+**45 × 45 mm** — the smallest square in the figure, which needs the category labels rotated 30° with
+`n` inline (three horizontal labels need the full 60 mm). `docker_architecture` is a two-slice pie, also
+45 × 45 mm (**AMD64 + ARM64 129 / 62%** turquoise vs **AMD64 only 79 / 38%** periwinkle — there is no
+ARM-only build). Per-task quartiles go to `technical_metrics_summary.csv`.
+
+**License pie.** `license_class_pie` is the compositional counterpart to the `license` bar: Permissive
+104 (50%) turquoise, Copyleft 76 (37%) periwinkle, Not recorded 27 (13%) silver, Non-commercial 1
+(<1%) **fuchsia** — the one use of that hue in the repo, because a 1-of-208 slice in any calmer colour
+is invisible. It shows the four **reuse classes, not the ten licences**: four licences have exactly one
+model each, a 1.7° wedge that cannot be seen or labelled, so per-licence detail stays in the bar
+panel.
+
+**Runtime batch size: 100 molecules** (`RUNTIME_BATCH` in `src/default.py`; the five
+`Computational Performance` columns are 1/10/100/1,000/10,000 molecules). A `-1` in those columns means
+the benchmark was **never run**, not zero — those models are skipped, never imputed. 100 is chosen
+because it is the largest batch where generative models still have data: coverage is **129/131, 57/58,
+10/19** at 100 molecules but **123/131, 55/58, 0/19** at 1,000. The cost of that choice: at 100
+molecules the median runtime is no higher than at 1 molecule (CP3/CP1 ratio 0.86), so for annotation
+and representation models the number is container startup, **not throughput — do not divide it by
+100**. What it buys is the Sampling box: median **481 s** against 34 s (Annotation) and 29 s
+(Representation), i.e. generative models are ~14× slower. That box rests on 10 of 19 models, so it is
+indicative only; every tick label carries its `n` and the script prints coverage on each run.
+
+The architecture pie is a **snapshot, not a trend** (45% dual-arch among 2021 models vs 77% among
+2026 — the 62% is accumulated stock, not current practice), so a caption needs the metadata snapshot
+date.
+
+**Panel sizes:** `task_subtask`, the waffle and the `license` bar are 60 × 60 mm (`cells=(2,2)`); the
+two box panels and the two pies are 45 × 45 mm; the two ten-category fields are 45.75 × 45.75 mm (a
+quarter of the page width, two side by side); the tag cloud and the pathogen panels are 90 × 90 mm —
+on a 183 × 170 mm page. The `*_by_subtask` stacks are 60 mm wide and shorter: 30 mm for Source Type's 3
+bars, 34.5 mm for Output's 4. That leaves Output's bars ~7% thinner (4.53 vs 4.88 mm) — an exact
+thickness match needs 36.1 mm, a chosen trade-off documented in `docs/figure_conventions.md`.
+
+**`pathogen_dataset_sizes` (full page width).** One box per pathogen over its modelled dataset sizes
+(log axis, 96–334,766 compounds), with a small pie per dataset whose filled share is that dataset's
+active fraction. **Added negatives are excluded from both the size and the ratio** — size is
+`n_compounds − n_added_negatives − n_added_decoys`, which reproduces the curation pipeline's own
+`n_mol_after`/`ar_after` exactly. Only 54 of 193 models had negatives added, so the medians barely
+move, but for those 54 it matters a lot (`mtuberculosis/DR_0012`: 2450 compounds at 0.50 active →
+1411 at 0.87). Decoys are zero for every model. Derived table: `dataset_sizes.csv`.
+**Read the pies as a gestalt, not a measurement** — at ~2.5 mm, "mostly active" vs "mostly inactive"
+is clear but 45% vs 50% is not; exact ratios are in the CSV. 54 of 193 datasets are majority-active
+once added negatives come out. Full page width is a legibility requirement: *P. falciparum* alone has
+51 datasets in one column.
+
+**`pathogen_activity_ratios` (alternative to the above).** Same data, encodings swapped: active
+fraction on the y axis where it can be resolved, dataset size as **dot area** (affine in √size, keyed
+at 100/1,000/10,000/100,000 — not area-proportional, since the range is 3,500×), one colour per
+pathogen. Colour is redundant with the x axis on purpose: only 9 substantive hues exist, so
+`distinct_colors` reuses them as tints beyond that, and the labelled axis is the real key. Shows what
+the pie version cannot: the largest datasets sit at near-zero active fraction while small ones are
+balanced or active-heavy. A short bar per column marks the pathogen's **unweighted mean** active
+fraction (size-weighted would be much lower, since the huge datasets are near 0% active). Size key is
+nested circles with leader-lined labels. Both panels are rendered — pick one at layout time.
 
 **Area encoding (both pathogen panels):** a mark's *area* encodes its model's training-set size
 as `n ** AREA_EXPONENT` with **`AREA_EXPONENT = 0.5`**, i.e. area ∝ √n, set in

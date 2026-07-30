@@ -15,6 +15,7 @@ import numpy as np
 import stylia as st
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
+from matplotlib.path import Path
 
 from plotting_colors import INK, REFERENCE_LINE, hue
 
@@ -88,6 +89,46 @@ def hbar(ax, labels, values, *, colors=None, abbreviate=False, name_map=None,
         ref_line(ax, ref, axis="x")
     if xlim is not None:
         ax.set_xlim(*xlim)
+
+
+def _wedge_path(frac, *, n=64):
+    """Unit wedge from 12 o'clock clockwise over ``frac`` of a turn, as a marker Path."""
+    a = np.pi / 2 - np.linspace(0.0, 2 * np.pi * float(frac), n)
+    verts = np.concatenate([[[0.0, 0.0]], np.column_stack([np.cos(a), np.sin(a)]), [[0.0, 0.0]]])
+    return Path(verts, closed=True)
+
+
+def pie_scatter(ax, x, y, frac, colors, *, s=26, edgecolor="white", linewidth=0.3, zorder=3):
+    """Scatter where every point is a two-slice pie: ``frac`` of it in the first colour.
+
+    Drawn as matplotlib **marker paths**, not patches, which is what keeps every pie the same
+    physical size and perfectly round on an axis with a log scale, a categorical x and no equal
+    aspect — a ``Wedge`` patch would have to be sized in data units and would come out elliptical and
+    varying. Marker paths are sized in points via ``s`` and are immune to the axis transform.
+    Matplotlib scales a custom marker path by a flat 0.5 rather than normalising it to its bounding
+    box, so a 10 % wedge and a 90 % wedge share one radius (checked: ``max|coord| == 0.5`` for every
+    fraction) — without that, slice size would leak into apparent circle size.
+
+    The "rest" slice is one full-circle scatter call for all points, with the ``frac`` wedges drawn
+    over it, so N pies cost N+1 draw calls rather than 2N.
+
+    **Both slices are stroked** in ``edgecolor``. The wedge sits on top of the circle, so leaving it
+    unstroked punches a gap in the circle's own outline wherever the wedge meets the rim — which is
+    exactly where two overlapping pies need an edge to stay separable. Stroking the wedge also draws
+    its two radii, giving the usual pie slice separators.
+
+    ``colors`` is a ``(part, rest)`` pair. ``s`` is the marker area in points squared.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    part, rest = colors
+    ax.scatter(x, y, s=s, marker="o", facecolor=rest, edgecolors=edgecolor,
+               linewidths=linewidth, zorder=zorder)
+    for xi, yi, fi in zip(x, y, np.asarray(frac, dtype=float)):
+        if not np.isfinite(fi) or fi <= 0:
+            continue
+        ax.scatter([xi], [yi], s=s, marker=_wedge_path(min(fi, 1.0)), facecolor=part,
+                   edgecolors=edgecolor, linewidths=linewidth, zorder=zorder + 1)
 
 
 def stacked_hbar(ax, labels, fracs, seg_order, seg_colors, *, xlim=(0, 1),
@@ -334,6 +375,62 @@ def swatch_legend(ax, mapping, *, loc="lower right", **kw):
     handles = [Patch(color=c, label=l) for l, c in mapping.items()]
     return ax.legend(handles=handles, loc=loc, fontsize=st.FONTSIZE_SMALL,
                      **LEGEND_KW, **kw)
+
+
+def nested_size_legend(ax, keys, areas, *, x, y_base, color=None, label_fmt="{:,}",
+                       fontsize=None, linewidth=0.7, zorder=6):
+    """Size key drawn as **nested circles sharing a bottom tangent**, one per key.
+
+    Nested rather than a row or column of separate markers: when the keys span decades the largest is
+    many times the smallest, so a row of to-scale markers takes over the panel while a stacked legend
+    wastes the space between them. Sharing a tangent also lets a reader compare each ring directly
+    against the one inside it.
+
+    ``areas`` are the matching scatter ``s`` values (points squared) — pass the *same* function the
+    data uses, so the key cannot drift from the marks. A scatter marker's path radius is
+    ``sqrt(s) / 2`` points, which is what is converted here.
+
+    Circles are drawn as ``Ellipse`` patches with the point radius converted separately per axis, so
+    they render round whatever the axes aspect or scale. Requires the axes limits to be final: the
+    conversion reads the live transform, so call this last.
+    """
+    from matplotlib.patches import Ellipse
+
+    color = REFERENCE_LINE if color is None else color
+    fig = ax.figure
+    fig.canvas.draw()
+    bb = ax.get_window_extent()
+    w_pts = bb.width * 72.0 / fig.dpi
+    h_pts = bb.height * 72.0 / fig.dpi
+    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+    per_pt_x = (x1 - x0) / w_pts
+    per_pt_y = (y1 - y0) / h_pts
+
+    fontsize = fontsize or st.FONTSIZE_SMALL
+    radii = [float(np.sqrt(a)) / 2.0 for a in areas]
+    ordered = sorted(zip(keys, radii), key=lambda t: -t[1])   # largest ring first (drawn behind)
+    rmax = max(radii)
+
+    # Label rows must be de-collided. Nesting packs the ring tops within 2*rmax of each other, which
+    # for a decade key is a few millimetres, while each label needs its own line height — so anchoring
+    # a label at its own ring's top guarantees overlap. Spread them evenly instead and reach back to
+    # each ring with a leader.
+    line_h = 1.25 * fontsize * per_pt_y
+    tops = [y_base + 2 * r * per_pt_y for _k, r in ordered]
+    span = max(tops[0] - tops[-1], line_h * (len(ordered) - 1))
+    centre = (tops[0] + tops[-1]) / 2
+    label_ys = [centre + span / 2 - i * span / max(len(ordered) - 1, 1)
+                for i in range(len(ordered))]
+
+    elbow = x + rmax * per_pt_x * 1.4
+    for (key, r_pts), top, ly in zip(ordered, tops, label_ys):
+        rx, ry = r_pts * per_pt_x, r_pts * per_pt_y
+        ax.add_patch(Ellipse((x, y_base + ry), width=2 * rx, height=2 * ry, facecolor="none",
+                             edgecolor=color, linewidth=linewidth, zorder=zorder))
+        ax.plot([x, elbow, elbow + rmax * per_pt_x * 0.4], [top, ly, ly],
+                color=color, linewidth=0.5, solid_joinstyle="round", zorder=zorder)
+        ax.text(elbow + rmax * per_pt_x * 0.7, ly, label_fmt.format(key), ha="left", va="center",
+                fontsize=fontsize, zorder=zorder)
 
 
 def marker_legend(ax, entries, *, loc="lower right", **kw):

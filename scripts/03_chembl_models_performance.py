@@ -48,6 +48,7 @@ sys.path.append(os.path.join(root, "..", "src"))
 # Importing the plotting stack applies the publication presets (print/article).
 from plots_chembl_performance import (
     save_consensus_figure,
+    save_dataset_sizes_figure,
     save_performance_figures,
     write_figure_cells,
 )
@@ -189,7 +190,7 @@ for pathogen in pathogens:
     models = load_models(pathogen_dir)
 
     if not models:
-        print(f"  No valid model CSVs found — skipping.")
+        print("  No valid model CSVs found — skipping.")
         continue
 
     print(f"  {len(models)} models loaded.")
@@ -226,11 +227,31 @@ for pathogen in pathogens:
 manifest = write_figure_cells(footprints, individual_dir)
 print(f"\n-> {manifest}")
 
-# Condensed cross-pathogen summary (retained models) at the top level of output_dir.
-consensus_fp = save_consensus_figure(consensus_entries, output_dir)
-if consensus_fp:
-    write_figure_cells(consensus_fp, output_dir)
-    for name, cells in consensus_fp.items():
+# Condensed cross-pathogen figures at the top level of output_dir.
+#
+# Dataset size and balance per pathogen, from the step-10 report table. Added negatives are excluded
+# from BOTH the size and the active fraction: n_compounds counts them, so subtracting them (and the
+# decoys, which are zero for every model) reproduces the curation pipeline's own n_mol_after and
+# ar_after. Only the 54 models that were given negatives are affected, but for those the change is
+# large — mtuberculosis/DR_0012 goes from 2450 compounds at 0.50 active to 1411 at 0.87.
+step10 = pd.read_csv(os.path.join(step10_dir, "10_reports.csv"), dtype={"name": str})
+datasets = pd.DataFrame({
+    "pathogen": step10["pathogen"],
+    "dataset": step10["name"],
+    "size": step10["n_compounds"] - step10["n_added_negatives"] - step10["n_added_decoys"],
+    "n_active": step10["n_positives"],
+})
+datasets["n_inactive"] = datasets["size"] - datasets["n_active"]
+datasets["active_fraction"] = datasets["n_active"] / datasets["size"]
+datasets.sort_values(["pathogen", "size"], ascending=[True, False]).to_csv(
+    os.path.join(output_dir, "dataset_sizes.csv"), index=False)
+
+top_fp = {}
+top_fp.update(save_dataset_sizes_figure(datasets, output_dir, pathogen_names))
+top_fp.update(save_consensus_figure(consensus_entries, output_dir))
+if top_fp:
+    write_figure_cells(top_fp, output_dir)
+    for name, cells in top_fp.items():
         print(f"-> {name} ({cells[0]}x{cells[1]} cells)")
 
 # Reconcile step 09 (plotted) against step 10 (retained + discarded). Anything in
