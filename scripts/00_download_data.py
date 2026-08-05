@@ -37,6 +37,7 @@ Outputs
     data/raw/chembl_model_reports/10_reports/10_discarded_models.csv
     data/raw/compound_lists/reference_library_smiles.csv
     data/raw/compound_lists/drugbank_smiles.csv
+    data/raw/lazyqsar_benchmark/all_results.csv
     data/raw/airtable_metadata.csv
     data/processed/annotation_preds_ref_library/{model_id}_{version}.csv
 """
@@ -290,6 +291,14 @@ SECTION1_SOURCES = [
             "27_final_data_overlap.csv", "27_chembl_space.json",
             "27_chembl_coverage.csv",
         },
+    },
+    {
+        "description": "LazyQSAR v3.4.2 benchmark results",
+        "repo": "ersilia-ml-benchmark",
+        "src_dir": "output/lazyqsar/v3.4.2",
+        "dst_dir": os.path.join(raw_dir, "lazyqsar_benchmark"),
+        "eosvc_path": "data/raw/lazyqsar_benchmark",
+        "include": lambda f: f == "all_results.csv",
     },
 ]
 
