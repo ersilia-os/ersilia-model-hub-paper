@@ -7,15 +7,15 @@ training. Analyses:
 
   1. Own primary assay: each of the 7 organisms with an EU OpenScreen primary assay, scored by
      its own model (AUROC + ROC curves + enrichment factor).
-  1b. Own secondary assay: the same models on the merged secondary (confirmatory / dose-response)
-     assays, for a primary-vs-secondary AUROC comparison.
   3. Shared vs exclusive hits: AUROC on exclusive actives (hit in 1 of the 7 primary assays, i.e.
      organism-specific) vs shared/non-exclusive actives (hit in >=2, i.e. pan-active), each against
      the same primary inactives.
   4. Cross-organism: model x EU OpenScreen assay AUROC matrix (off-diagonal = a model predicting
      a DIFFERENT organism's data) + per-model specificity index.
-  4b. Active-set overlap: pairwise Jaccard between the 7 assays' active sets (label-only) — the
-     backdrop for reading the cross-organism AUROCs.
+  4b. Active-set overlap between the 7 assays' active sets (label-only) — the backdrop for reading
+     the cross-organism AUROCs. Two measures, because the sets are very unequal in size: symmetric
+     Jaccard |A∩B|/|A∪B|, and directional containment |A∩B|/|A| (the share of row organism A's
+     actives also active against B), drawn as a pie matrix sized by each row's active count.
   4c. Hit promiscuity (label-only): how many actives are hits in 1, 2, ... 7 pathogens, plus the
      per-compound table naming the promiscuous (pan-active) ones.
   4d. Summed consensus score across the 7 models, as a boxplot over four hit classes — inactive in
@@ -55,10 +55,11 @@ carries its own ``png/``, ``pdf/`` and ``figure_cells.json``.
     <top level>              — no leakage dimension: label-only tables + the leakage audit
         05_leakage_report.csv, 05_active_overlap.csv, 05_hit_promiscuity.csv,
         05_promiscuous_hits.csv
-        figures: euos_overlap, active_overlap_jaccard, hit_promiscuity
+        figures: euos_overlap, active_overlap_jaccard, active_overlap_containment (+ its key),
+        hit_promiscuity
 
     full/                    — training-set compounds KEPT
-        05_euopenscreen_auroc.csv, 05_euopenscreen_secondary_auroc.csv, 05_euopenscreen_roc.csv,
+        05_euopenscreen_auroc.csv, 05_euopenscreen_roc.csv,
         05_hit_exclusivity.csv, 05_cross_organism_euos.csv          (set=raw rows)
         05_consensus_sum_{boxstats,actives}.csv,
         05_consensus_max_{boxstats,actives}.csv,
@@ -68,17 +69,17 @@ carries its own ``png/``, ``pdf/`` and ``figure_cells.json``.
                  consensus_max_percentile_by_activity, exclusive_hit_model_rank_{raw,percentile}
 
     deduplicated/            — training-set compounds REMOVED
-        05_euopenscreen_auroc.csv, 05_euopenscreen_secondary_auroc.csv, 05_euopenscreen_roc.csv,
+        05_euopenscreen_auroc.csv, 05_euopenscreen_roc.csv,
         05_hit_exclusivity.csv, 05_cross_organism_euos.csv          (set=dedup rows)
         05_specificity_index.csv,
         05_consensus_max_percentile_dedup_{boxstats,actives}.csv,
         05_exclusive_hit_model_rank_dedup{,_compounds}.csv
-        figures: euos_roc_grid, euos_shared_enrichment, primary_vs_secondary_auroc,
-                 hit_exclusivity_auroc, cross_organism_heatmap, specificity_index,
-                 submodel_auroc_summary, consensus_max_percentile_by_activity_dedup,
+        figures: euos_roc_grid, euos_shared_enrichment, hit_exclusivity_auroc,
+                 cross_organism_heatmap, specificity_index, submodel_auroc_summary,
+                 consensus_max_percentile_by_activity_dedup,
                  exclusive_hit_model_rank_percentile_dedup
 
-The five long-form metric tables appear in BOTH subfolders, filtered to that folder's ``set``.
+The long-form metric tables appear in BOTH subfolders, filtered to that folder's ``set``.
 The AUROC-family figures sit under ``deduplicated/`` because they plot the leakage-filtered values;
 their ``full/`` counterparts exist as data, not as figures.
 
@@ -93,7 +94,6 @@ their own layout (their CSVs carry a ``set`` column with both variants):
     output/05_euopenscreen_validation/eos3dys_validation/eos3dys_hit_exclusivity.csv
     output/05_euopenscreen_validation/eos3dys_validation/eos3dys_exclusive_rank.csv
     output/05_euopenscreen_validation/eos3dys_validation/eos3dys_exclusive_rank_compounds.csv
-    output/05_euopenscreen_validation/eos3dys_validation/eos3dys_roc.csv
     output/05_euopenscreen_validation/eos3dys_validation/eos3dys_consensus_max_boxstats.csv
     output/05_euopenscreen_validation/eos3dys_validation/eos3dys_consensus_max_actives.csv
     output/05_euopenscreen_validation/eos3dys_validation/{png,pdf}/<panel>.{png,pdf}

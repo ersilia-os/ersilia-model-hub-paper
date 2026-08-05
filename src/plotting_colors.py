@@ -33,10 +33,9 @@ def hue(name, lighten=None):
     """
     return _AC.get(name, lighten=lighten)
 
-# Three distinct colour sets so the groupings never share hues:
+# Two distinct colour sets so the groupings never share hues:
 #   - Task   : cool trio (blue / teal / orange)
 #   - Source : warm trio (red / green / gold), reused in the treemap dots
-#   - Output : single-hue (periwinkle) gradient, shaded by rank
 # Colours anchor to stylia ArticleColors (NPG). Two palette rules:
 #   - silver is the NEUTRAL hue: reference marks (chance diagonals, baselines) and neutral / "other"
 #     categorical buckets (e.g. TARGET_TYPE_COLORS["Other"], the multi-unit curation outcome). It is
@@ -95,10 +94,18 @@ def _subtask_colors():
 SUBTASK_COLORS = _subtask_colors()
 
 # Source Type -> colour (used for the Source Type bars, the treemap dots, and its legend).
+# Used ONLY by the two pathogen panels (circles and voronoi), so the hues are chosen against what a
+# reader sees there rather than against the hub-wide Source Type split. Ordered by dot count in those
+# panels — Internal 33, External 16, Replicated 2 — with the smallest category taking lime, which reads
+# as an accent against the two heavier hues and keeps a 2-dot category from disappearing. Crimson is
+# deliberately NOT here any more: it is the Annotation task hue, and these panels sit near the
+# task-coloured ones.
+# NOTE the hub-wide ordering is the other way round (External 156 > Internal 45 > Replicated 7), so do
+# not read the hue ranking as a statement about the hub — only about these panels' dots.
 SOURCE_TYPE_COLORS = {
-    "External": _AC.crimson,
-    "Internal": _AC.lime,
-    "Replicated": _AC.amber,
+    "Internal": _AC.periwinkle,
+    "External": _AC.amber,
+    "Replicated": _AC.lime,
 }
 
 # Default colour for a plain bar chart.
@@ -156,19 +163,6 @@ def distinct_colors(n, *, levels=(None, 0.55)):
     return out
 
 
-def ordinal_shades(n, lo=0.4):
-    """``n`` periwinkle shades, darkest first — this figure's ORDINAL single-hue gradient.
-
-    Used by the tag cloud, so a gradient always reads as "rank/count within one field". Note
-    periwinkle now does **double duty**: it is also the flat categorical hue for licence Copyleft and
-    for x86-only builds. The two never meet in a panel and a gradient does not read as a category, but
-    if that ever needs separating, cobalt is free and is the obvious hue to move this to. ``lo`` caps
-    the lightest tint short of white.
-    """
-    lightens = np.linspace(1.0, lo, n)
-    return [_AC.get("periwinkle", lighten=float(l)) for l in lightens]
-
-
 # ---------------------------------------------------------------------------
 # Licence reuse classes (01_ersilia_metadata.py)
 # ---------------------------------------------------------------------------
@@ -202,7 +196,7 @@ LICENSE_CLASS = {
 #
 # Non-commercial gets FUCHSIA, the one place in this figure that hue is used. The convention
 # deprioritises it because it reads as emphasis — which is exactly what is needed here: the class holds
-# a single model (1/208 = a 1.7 degree wedge in the pie, a hairline bar in the chart), so a
+# a single model (1/208 = a 1.7 degree wedge in the donut ring), so a
 # well-behaved hue would simply disappear. Emphasis is also editorially correct, since it is the only
 # licence in the hub that forbids commercial reuse.
 LICENSE_CLASS_COLORS = {
@@ -211,11 +205,6 @@ LICENSE_CLASS_COLORS = {
     "Non-commercial": _AC.fuchsia,
     LICENSE_MISSING: _AC.silver,
 }
-
-
-def license_colors(values):
-    """Reuse-class colour per simplified licence identifier (see :data:`LICENSE_CLASS`)."""
-    return [LICENSE_CLASS_COLORS[LICENSE_CLASS[v]] for v in values]
 
 
 # ---------------------------------------------------------------------------
@@ -227,10 +216,39 @@ def license_colors(values):
 # are real build targets rather than one being a residual bucket — silver would have implied the
 # latter. Periwinkle rather than a warning hue so the panel does not read as flagging x86-only builds
 # as a problem, and it pairs with turquoise without competing.
-ARCH_DISPLAY = {"AMD64,ARM64": "AMD64 + ARM64", "AMD64": "AMD64 only"}
+# Shortened from AMD64 / ARM64. As a donut legend row with its count, "AMD64+ARM64 129" is the widest
+# label of the three donut panels and squeezes its own axes: it left the ring 18.7 mm against the other
+# two panels' 19.8 mm, i.e. the ring's size was being set by the length of a word. Dropping the "64"
+# clears it with room to spare. The full names are the Docker platform identifiers (`linux/amd64`,
+# `linux/arm64`) and belong in a caption if precision matters there.
+ARCH_DISPLAY = {"AMD64,ARM64": "AMD + ARM", "AMD64": "AMD only"}
+# Cobalt / tangerine rather than the turquoise + periwinkle this panel used as a pie: those two are
+# now the licence donut's, and the three donuts are meant to be read side by side, so no hue may mean
+# two different things across them. Both are substantive hues — silver would have cast x86-only as a
+# residual bucket rather than a real build target. Tangerine is used here as a plain categorical hue
+# (as it is for Single Point in script 02), NOT as a warning: a caption must not read it as flagging
+# x86-only builds as a problem.
+# Ordered base-capability first, so the ring reads "x86 only, then also ARM" rather than by size —
+# this dict's order is what drives the wedge and legend order.
 ARCH_COLORS = {
-    "AMD64 + ARM64": _AC.turquoise,
-    "AMD64 only": _AC.periwinkle,
+    "AMD only": _AC.tangerine,
+    "AMD + ARM": _AC.cobalt,
+}
+
+# Biomedical Area groups: ONE hue (the Annotation crimson, which is what every model in that panel is)
+# differentiated by fill pattern instead of by colour. Solid for the largest group and progressively
+# lighter-inked patterns after it, so the ink ordering matches the size ordering; the catch-all takes
+# the cross-hatch, which reads as "mixed". Patterns are drawn in white over the crimson (matplotlib
+# hatches use the patch edge colour), so every wedge still reads as red at a glance.
+# Repeat counts are the density knob: in matplotlib a repeated hatch character packs the motif tighter,
+# so these are deliberately long. At three or four repeats the ring showed finger-thick stripes and
+# dots the size of the ring's own thickness, which read as damage rather than as a fill. Paired with
+# the thin ``hatch.linewidth`` set in plotting_base.
+BIOAREA_GROUP_HATCH = {
+    "Antimicrobial": "",
+    "ADMET": "/////////",
+    "Antiviral": ".........",
+    "Other": "xxxxxxxxx",
 }
 
 
@@ -286,11 +304,99 @@ SHARED_ORGANISM_COLORS = {
     "saureus": _AC.periwinkle,
 }
 
+
+#: Pathogen pairs whose positional hues are exchanged after the fact. The positional palette (see
+#: :func:`pathogen_activity_colors`) happened to give *S. aureus* the lime and *E. coli* the
+#: periwinkle that :data:`SHARED_ORGANISM_COLORS` assigns the other way round — the swap makes those
+#: two organisms read as ONE colour across step 03 and step 05 instead of trading hues between them,
+#: which is the single most confusing way two palettes can disagree. Applied to BOTH the panel and
+#: :func:`pathogen_activity_colors` through :func:`swap_pathogen_hues`, so the two cannot drift.
+PATHOGEN_HUE_SWAPS = (("ecoli", "saureus"),)
+
+
+def swap_pathogen_hues(order, colors):
+    """``colors`` with each :data:`PATHOGEN_HUE_SWAPS` pair's two entries exchanged.
+
+    ``order`` is the positional pathogen list the colours were generated for; a pair with either
+    member absent is skipped, so this is a no-op on a subset that does not contain both.
+    """
+    out = list(colors)
+    index = {p: i for i, p in enumerate(order)}
+    for a, b in PATHOGEN_HUE_SWAPS:
+        ia, ib = index.get(a), index.get(b)
+        if ia is not None and ib is not None:
+            out[ia], out[ib] = out[ib], out[ia]
+    return out
+
+
+def pathogen_activity_colors(dataset_counts, *, levels=(None, 0.78)):
+    """The hue ``pathogen_activity_ratios`` (step 03) gives each pathogen, as a ``{pathogen: colour}``.
+
+    That panel colours **positionally** — ``distinct_colors(n)`` over pathogens ranked by how many
+    ChEMBL datasets each has, descending, then :func:`swap_pathogen_hues` — so there is no fixed hue
+    per pathogen to import, and a panel in another step can only match it by reproducing the ranking.
+    This does that, from the ``{pathogen: n_datasets}`` mapping the step-03 summary CSV
+    (``dataset_sizes.csv``) yields.
+
+    Derived, not frozen, on purpose: the ranking moves whenever the ChEMBL curation adds or drops a
+    dataset, and a hardcoded copy would silently stop matching the panel it exists to match.
+
+    ``levels`` defaults to the panel's ACCENT palette (the base hue, used there for dot outlines and
+    mean bars) rather than its pale ``(0.62, 0.38)`` dot fills — a 0.62-lightened hue is too weak to
+    carry a mark on white.
+
+    **These hues still do not agree with** :data:`SHARED_ORGANISM_COLORS` in general, and cannot: that
+    dict is a fixed 7-organism palette, this one is a position in a 15-pathogen ranking. Only the
+    :data:`PATHOGEN_HUE_SWAPS` pair is reconciled (*E. coli* lime, *S. aureus* periwinkle in both);
+    every other organism may still differ, so do not mix the two palettes in one figure.
+    """
+    order = sorted(dataset_counts, key=lambda p: (-dataset_counts[p], p))
+    return dict(zip(order, swap_pathogen_hues(order, distinct_colors(len(order), levels=levels))))
+
 # Neutral colour for reference marks (chance diagonals, baselines, gridline emphasis).
 REFERENCE_LINE = _AC.silver
 
 # Structural ink for box/whisker outlines, median lines and marker emphasis.
 INK = _AC.black
+
+
+# ---------------------------------------------------------------------------
+# Hub timeline (01b_community_stats.py)
+# ---------------------------------------------------------------------------
+# One hue per track of the five-track shared-axis timeline. Here colour is DECORATIVE, not
+# semantic: each track is already named by its y label and no two tracks share a scale, so the
+# hue only helps the eye keep its place while reading down a 15 mm band.
+#
+# That is exactly why this is its own palette rather than a reuse of TASK_COLORS. Those encode
+# categories; borrowing them here would imply that the "models" track and the Annotation task are
+# the same thing — a relationship that does not exist across tracks.
+#
+# Hue NAMES rather than resolved colours, because the People track needs a second, lighter weight
+# of its own hue and ``hue()`` is the only sanctioned way to ask for one — ``distinct_colors()``
+# hands back RGB tuples that cannot be lightened without reimplementing the blend.
+#
+# Assigned explicitly rather than by zipping _CATEGORICAL_HUES: People takes turquoise, which the
+# pick order would have given to a fifth track. Turquoise is the repo's default/positive hue, and
+# spending it on a decorative track is only acceptable because no track here encodes a category —
+# see the note above.
+TIMELINE_TRACK_ORDER = ["Models", "People", "Commits", "Issues"]
+TIMELINE_HUES = {
+    "Models": "cobalt",
+    "People": "turquoise",
+    "Commits": "lime",
+    "Issues": "tangerine",
+}
+TIMELINE_COLORS = {t: _AC.get(h) for t, h in TIMELINE_HUES.items()}
+
+#: Lighter tint of a track's own hue, for a track carrying more than one nested series. Unused
+#: while every track is a single series, but the mechanism has to exist for the moment one is not:
+#: nested areas need two weights of one hue, never two hues.
+TIMELINE_SECONDARY_LIGHTEN = 0.45
+
+#: Fill opacity under each track's line. 1.0 — the fills are the FULL hue, not a wash. At four
+#: tracks of ~5 mm the bands are small enough that saturated colour reads as four clean stripes
+#: rather than as noise, and a tinted fill at this size is barely distinguishable from white.
+TIMELINE_FILL_ALPHA = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -311,3 +417,37 @@ def auroc_shades(values, lo=0.35, hi=1.0):
     cm = FadingColormap("cobalt")
     cm.fit(np.array([lo, hi]))
     return cm.transform(np.asarray(values, dtype=float))
+
+
+def count_shades(values, name="turquoise", *, log=False, headroom=0.15):
+    """Fading shades over an ordinal scale — pale = low, saturated = high.
+
+    The ordinal counterpart of :func:`auroc_shades`. Pass whichever variable the gradient is meant to
+    encode; the ramp always runs pale at the minimum to saturated at the maximum, so reversing the
+    direction is a matter of what you hand it, not a flag here.
+
+    ``log=True`` fits on ``log10`` instead of the raw values, for quantities running over decades — a
+    linear fit there puts everything below the largest value into the palest step or two and the
+    colour stops distinguishing anything. Values are clamped at 1 first, so a zero shades as the
+    floor rather than raising. Leave it off for a short ordinal range such as 1-7, where log would
+    bunch the top of the scale together instead.
+
+    ``headroom`` extends the fit floor below the smallest value by that fraction of the observed
+    span, for the same reason ``auroc_shades`` anchors below chance: fitted exactly at the minimum,
+    the smallest mark comes out white and disappears against the panel. A fraction rather than an
+    absolute so it means the same thing on both scales. It is a legibility margin, not a data
+    threshold.
+
+    Colour is ordinal here, so use it only where the position scale already carries the value — a
+    redundant, scannable encoding, never the sole one.
+    """
+    from stylia import FadingColormap
+
+    v = np.asarray(values, dtype=float)
+    if log:
+        v = np.log10(np.maximum(v, 1.0))
+    lo, hi = float(v.min()), float(v.max())
+    span = (hi - lo) or 1.0
+    cm = FadingColormap(name)
+    cm.fit(np.array([lo - headroom * span, hi]))
+    return cm.transform(v)

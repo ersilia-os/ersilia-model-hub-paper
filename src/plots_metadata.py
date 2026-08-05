@@ -11,17 +11,18 @@ import os
 
 import circlify
 import numpy as np
-import matplotlib.colors as mcolors
+import matplotlib
 import matplotlib.patches as mpatches
 import matplotlib.patheffects as patheffects
 import stylia
 
-from plotting_base import BasePlot, CELLS_PER_WIDTH
+from plotting_base import BasePlot, CELLS_PER_WIDTH, CELL_MM, pdf_page_mm
 from plotting_colors import (TASK_COLORS, SUBTASK_COLORS, SOURCE_TYPE_COLORS, BAR_DEFAULT,
+                             BIOAREA_GROUP_HATCH,
                              ARCH_COLORS, ARCH_DISPLAY, LICENSE_CLASS_COLORS, REFERENCE_LINE,
-                             catchall_colors, license_colors, ordinal_shades, hue)
-from plotting_utils import abbrev, box_with_jitter, hbar, stacked_hbar
-from voronoi_treemap import polygon_area, polygon_centroid, voronoi_treemap
+                             catchall_colors, hue)
+from plotting_utils import (abbrev, box_with_jitter, hbar,
+                            place_inside_labels, stacked_hbar)
 from default import RANDOM_SEED, RUNTIME_BATCH, RUNTIME_COLUMN
 
 # --------------------------------------------------------------------------------------
@@ -39,6 +40,74 @@ QUARTER_SQUARE = (1.525, 1.525)
 # chart area is what gives way.
 SMALL_SQUARE = (1.5, 1.5)
 
+# A quarter of stylia's actual canvas: create_figure(width=0.25) over SIZE = 7.09 in = 180.09 mm is
+# 45.02 mm = 1.5 cells. NOTE this is 0.75 mm narrower than QUARTER_SQUARE above, which is a quarter of
+# the 183 mm Nature *page* rather than of stylia's canvas. The waffle and the two stacked subtask
+# panels are sized on this one.
+QUARTER_WIDTH = 1.5
+
+# Height of the technical box row AND of the Biomedical Area strip, so the two sit in one band.
+# 30 mm: for the box row that is 3 task rows at a ~5.9 mm pitch; for the strip, 4 groups at 4.55 mm.
+_BOX_ROW_HEIGHT_CELLS = 1.0
+
+# Biomedical Area: a 25 mm strip, the narrowest panel in the repo. There is no room for a tick-label
+# gutter (a fixed ~14 mm whatever the width), so the category names go INSIDE the bars and the y axis
+# goes away — see hbar(inside_labels=True).
+NARROW_STRIP_MM = 25.0
+_STRIP_CROP_PAD_MM = 1.10      # measured; smaller than the box row's because there is no y label
+
+# Bar thickness as a fraction of the row pitch. Lower than matplotlib's 0.8 on purpose: the strip's
+# height is fixed by the box row (below), so with only four groups the pitch is wide, and 0.8 would
+# give a 3.6 mm bar with a 0.9 mm gap — a near-solid block. At 0.70 the bar is 3.2 mm (close to the
+# 2.9 mm mark weight used across this figure, and enough to seat a 5 pt label) with a 1.4 mm gap.
+_STRIP_BAR_FRACTION = 0.70
+
+# The three donut panels (licence, architecture, biomedical area) are one family: same width, same
+# ring, same legend-beneath treatment, so they read as a set. 25 mm matches the Biomedical Area strip
+# and puts three of them in 75 mm.
+#
+# The ring is the widest thing in each panel — the legends run 21-23 mm — so the crop width is the
+# ring's own diameter plus a measured tight-bbox pad. NOTE calibrate that pad against a FULL script
+# run, never an isolated one: stylia wipes matplotlib's font cache on import, so the first figure of a
+# process draws with fallback text metrics and measures ~0.6 mm small.
+DONUT_WIDTH_MM = 25.0
+_DONUT_CROP_PAD_MM = 1.23
+_DONUT_LEGEND_ROW_MM = 2.5     # per legend entry, measured
+
+
+#: Rendered outer diameter of every donut's ring, in mm. Pinned rather than inherited, because
+#: otherwise the ring is a side effect of how long the legend text happens to be: ``tight_layout``
+#: shrinks the axes to fit a legend wider than it, so the two-row architecture key (19.94 mm) squeezed
+#: its ring to 18.18 mm against the other two panels' 19.81 mm — an 8 % difference driven by nothing
+#: but the word "AMD64+ARM64". Must stay at or below the narrowest natural axes width, or the ring
+#: overflows its axes and is clipped. See :meth:`DonutPlot.pin_ring`.
+DONUT_RING_MM = 19.6
+
+
+def _donut_cells(n_legend_rows):
+    """``(rows, cols)`` for a donut panel with ``n_legend_rows`` entries beneath the ring.
+
+    Height tracks the legend rather than being fixed: the ring is square and width-bound, so the panel
+    is ring + legend band. **A two-entry donut therefore comes out shorter than a four-entry one** —
+    the architecture panel is ~5 mm shorter than the other two, so align the set on the rings, not on
+    the panel boxes. Declaring roughly the right height matters because the legend is anchored below
+    the axes: over-declare and ``tight_layout`` opens a gap between ring and key.
+    """
+    cols = (DONUT_WIDTH_MM - _DONUT_CROP_PAD_MM) / CELL_MM
+    rows = (DONUT_WIDTH_MM + n_legend_rows * _DONUT_LEGEND_ROW_MM) / CELL_MM
+    return (rows, cols)
+
+
+def _narrow_strip_cells(n_bars, width_mm=NARROW_STRIP_MM):
+    """``(rows, cols)`` for the Biomedical Area strip: ``width_mm`` wide once cropped, and **the same
+    height as the technical box row**, so the two can sit side by side in one band.
+
+    Height is therefore NOT derived from ``n_bars`` — the bar count only decides how the fixed axes
+    height is divided. At four groups that is an 18.19 mm axes over 4 rows, a 4.55 mm pitch.
+    """
+    cols = (width_mm - _STRIP_CROP_PAD_MM) / CELL_MM
+    return (_BOX_ROW_HEIGHT_CELLS, cols)
+
 
 class FieldBarPlot(BasePlot):
     """Horizontal bar chart of a metadata field's value counts.
@@ -53,17 +122,20 @@ class FieldBarPlot(BasePlot):
              this rather than ``colors`` when the colour depends on the value (e.g.
              :func:`plotting_colors.catchall_colors`), so the list can never fall out of step with
              the rows actually drawn.
-    legend_map : optional ``{label: colour}`` key, for panels whose bar colour encodes something
-             the axis labels do not say (e.g. the licence reuse classes). Omit where colour is
-             decorative or already implied by the tick labels.
     n      : optional top-N cap; when set, only the first ``n`` rows are shown and the
              title gets a "(top n)" suffix.
     cells  : footprint on the reference grid as ``(rows, cols)`` — taller for panels with
              more bars (see ``save_metadata_figures``).
+    inside_labels : draw the category names inside the bars instead of as y tick labels, and drop the
+             y axis. For panels too narrow to afford a tick-label gutter — see :func:`hbar`, which
+             requires a pale bar colour for it to read. Sets ``self.label_texts`` for measurement.
+    xlabel : count-axis label. Shortened on narrow panels: at 25 mm "Number of models" is 17.6 mm
+             against an 18.7 mm axes, close enough to overhanging that it would set the crop width.
     """
 
     def __init__(self, ax=None, counts=None, title="", colors=None, color_fn=None,
-                 legend_map=None, n=None, cells=(3, 3)):
+                 n=None, cells=(3, 3), inside_labels=False,
+                 xlabel="Number of models"):
         BasePlot.__init__(self, ax=ax, cells=cells)
         self.name = title.lower().replace(" ", "_")
         if n:
@@ -71,11 +143,54 @@ class FieldBarPlot(BasePlot):
             title = f"{title} (top {n})"
         if color_fn is not None:
             colors = color_fn(counts["value"])
-        hbar(self.ax, counts["value"].tolist(), counts["count"].tolist(),
-             colors=colors if colors is not None else BAR_DEFAULT)
-        if legend_map:
-            self.legend(legend_map)
-        self.label(xlabel="Number of models", ylabel=" ", title=title)
+        self.label_values = counts["count"].tolist()
+        self.label_texts = hbar(
+            self.ax, counts["value"].tolist(), self.label_values,
+            colors=colors if colors is not None else BAR_DEFAULT,
+            inside_labels=inside_labels,
+            bar_fraction=_STRIP_BAR_FRACTION if inside_labels else 0.8)
+        self.label(xlabel=xlabel, ylabel="" if inside_labels else " ", title=title)
+
+    def measure_labels(self):
+        """Place the inside-bar labels, then measure them. Call BEFORE ``save`` closes the figure.
+
+        Placement runs here rather than at draw time because it weighs a label width fixed in points
+        against an axes width ``tight_layout`` is still free to change, so layout must go first. An
+        inside label is also not clipped, so one hanging off a spine would spill outside the plot area
+        and *set* the crop width — the failure mode a fixed-width panel cannot absorb. Sets
+        ``self.n_inside`` / ``self.n_after`` and returns
+        ``(axes_mm, widest_label_mm, widest_label_text)``.
+        """
+        import matplotlib.pyplot as plt
+
+        plt.figure(self.fig.number)
+        plt.tight_layout()
+        self.n_inside, self.n_after = place_inside_labels(
+            self.ax, self.label_texts, self.label_values)
+        self.fig.canvas.draw()
+        r = self.fig.canvas.get_renderer()
+        self.axes_mm = self.ax.get_window_extent().width / self.fig.dpi * 25.4
+        widest = max(self.label_texts,
+                     key=lambda t: t.get_window_extent(r).width, default=None)
+        self.label_mm = (widest.get_window_extent(r).width / self.fig.dpi * 25.4
+                         if widest is not None else 0.0)
+        self.widest_label = widest.get_text() if widest is not None else ""
+        return self.axes_mm, self.label_mm, self.widest_label
+
+
+#: Layout dpi for a standalone StackedFieldBarPlot, raised from matplotlib's 100.
+#:
+#: Nothing to do with output resolution — the PDF is vector and stylia sets the PNG's dpi on save.
+#: This is about the LAYOUT GRID: matplotlib's canvas is a whole number of pixels, so every size the
+#: layout can express is a multiple of one pixel — **0.254 mm at dpi 100**. Two panels sized to draw
+#: bars of the same thickness (see :func:`_stack_axes_heights`) need a specific, non-round split of
+#: the height between them, and on a 0.254 mm grid the nearest achievable split leaves the two bars
+#: **1.8% apart**, which no choice of constants can improve. At 600 the grid is 0.042 mm and the same
+#: solve lands inside 0.3%.
+#:
+#: Set on this class only, so the rest of the figure's carefully calibrated crops are untouched — a
+#: global dpi change would shift every measured panel size in the repo by up to a quarter of a mm.
+_LAYOUT_DPI = 600
 
 
 class StackedFieldBarPlot(BasePlot):
@@ -96,15 +211,23 @@ class StackedFieldBarPlot(BasePlot):
     name   : output file stem (e.g. ``"source_type_by_subtask"``).
     legend_kw : kwargs forwarded to the swatch legend, or ``None`` for **no legend** — which is what
              both panels here pass, since ``task_subtask`` and the waffle are the shared subtask key
-             and a 6-entry legend does not fit on a 60 x 30 mm panel. ``{}`` gives the primitive's
+             and a 6-entry legend does not fit on a ~52 x 25 mm panel. ``{}`` gives the primitive's
              defaults.
-    xlim   : count-axis limits, or ``None`` to autoscale.
+    xlim   : count-axis limits, or ``None`` to autoscale (the normal case here — the two panels are
+             NOT on a shared scale, so each one's axis runs to its own longest bar).
+    show_xlabel : ``False`` drops the ``"Number of models"`` axis title while keeping the tick labels,
+             so a stacked pair states the quantity once instead of twice. The panel keeps a fully
+             readable count axis of its own, unlike hiding the ticks as well: it just borrows the
+             wording from its partner. Worth ~3.3 mm of the fixed tick+label band.
     cells  : footprint on the reference grid as ``(rows, cols)``.
     """
 
     def __init__(self, ax=None, table=None, colors=None, name="stacked_field",
-                 legend_kw=None, xlim=None, cells=(2, 2)):
-        BasePlot.__init__(self, ax=ax, cells=cells)
+                 legend_kw=None, xlim=None, cells=(2, 2), show_xlabel=True):
+        # The layout dpi has to be in force when the figure is CREATED — it is what sets the pixel
+        # grid every later size is quantised onto. Setting it afterwards does not re-quantise.
+        with matplotlib.rc_context({"figure.dpi": _LAYOUT_DPI}):
+            BasePlot.__init__(self, ax=ax, cells=cells)
         self.name = name
         segments = list(table.columns)
         # stacked_hbar wants one {segment: value} dict per row. Its xlim default of (0, 1) is for
@@ -113,7 +236,43 @@ class StackedFieldBarPlot(BasePlot):
         stacked_hbar(self.ax, list(table.index), rows, segments, colors, xlim=xlim)
         if legend_kw is not None:
             self.legend({s: colors[s] for s in segments}, **legend_kw)
-        self.label(xlabel="Number of models", ylabel=" ", title=name)
+        # Tick labels always stay — each panel autoscales to its own longest bar, so it needs its own
+        # readable numbers. Only the axis TITLE is optional, so a stacked pair says what is being
+        # counted once rather than twice.
+        self.label(xlabel="Number of models" if show_xlabel else "", ylabel=" ", title=name)
+        self.n_bars = len(table)
+        self.show_xlabel = show_xlabel
+        self.bar_mm = self.pitch_mm = self.axes_h_mm = self.fig_h_mm = None
+
+    def measure_geometry(self):
+        """Drawn bar thickness, row pitch and axes height in mm. Call BEFORE ``save`` closes the figure.
+
+        Measured off the *rendered* axes rather than computed from the sizing constants, because that
+        is the only check that catches those constants drifting: a stacked pair sized for equal bar
+        thickness (see :func:`_stack_cells`) is only equal if the fixed furniture bands the solver
+        subtracts are still what the renderer actually spends. Pitch is one data unit through
+        ``transData`` and thickness is a segment patch's own height. ``fig_h_mm - axes_h_mm`` is what
+        re-calibrates ``_AXES_BAND_MM``, and it is measured against the FIGURE, not the footprint: the
+        figure is the footprint quantised onto the canvas pixel grid, so the footprint is the one size
+        in the chain that no band is constant against.
+
+        Sets ``self.pitch_mm`` / ``self.bar_mm`` / ``self.axes_h_mm`` / ``self.fig_h_mm``. The panel's
+        page size is NOT measured here — that is ``plotting_base.pdf_page_mm`` on the saved file, since
+        the pre-save estimate is ~1.2 mm short on width.
+        """
+        import matplotlib.pyplot as plt
+
+        plt.figure(self.fig.number)
+        plt.tight_layout()
+        self.fig.canvas.draw()
+        px_mm = 25.4 / self.fig.dpi
+        t = self.ax.transData
+        self.pitch_mm = abs(t.transform((0, 1))[1] - t.transform((0, 0))[1]) * px_mm
+        self.bar_mm = (self.ax.patches[0].get_window_extent().height * px_mm
+                       if self.ax.patches else 0.0)
+        self.axes_h_mm = self.ax.get_window_extent().height * px_mm
+        self.fig_h_mm = self.fig.get_size_inches()[1] * 25.4
+        return self.pitch_mm, self.bar_mm, self.axes_h_mm
 
 
 class TaskSubtaskBarPlot(BasePlot):
@@ -125,8 +284,9 @@ class TaskSubtaskBarPlot(BasePlot):
     Deliberately carries **no legend**: every bar is already labelled with its subtask name next
     to its own colour, so this panel *is* the subtask colour key, and placing it beside the
     ``*_by_subtask`` panels lets those drop their legends too (they have no room for one at
-    60 x 30 mm). Per-task totals live in ``task_counts.csv``. ``task_subtask_waffle`` is the other
-    panel that can serve as the key — it carries its own legend.
+    ~52 x 25 mm). Per-task totals live in ``task_counts.csv``. ``task_subtask_waffle`` is the other
+    panel that can serve as the key — it carries its own legend, on abbreviated labels, so the full
+    subtask names reach the reader through THIS panel's tick labels.
 
     Parameters
     ----------
@@ -143,40 +303,94 @@ class TaskSubtaskBarPlot(BasePlot):
         self.label(xlabel="Number of models", ylabel=" ", title="Tasks & subtasks")
 
 
-class TaskMetricBoxPlot(BasePlot):
-    """One box-with-dots per Task for a per-model technical metric (runtime, image size, ...).
+class _HorizontalTaskPanel(BasePlot):
+    """Shared scaffolding for a panel in the horizontal task row (see ``_box_row_cells``).
+
+    Owns the two things every panel in that row must do identically, so a panel cannot drift out of
+    register with its neighbours: the **task axis** (tasks down the y axis, first on top, tick labels
+    only on the leftmost panel) and the **label-fit measurement** the entry point reports.
+
+    Subclasses draw their marks against integer y positions ``0..len(tasks)-1`` and then call
+    :meth:`_task_axis`.
+    """
+
+    def _task_axis(self, tasks, show_y, xlabel, log=True):
+        ax = self.ax
+        if log:
+            ax.set_xscale("log")
+        ax.set_ylim(len(tasks) - 0.5, -0.5)      # inverted: first task on top
+        ax.set_yticks(range(len(tasks)))
+        ax.set_yticklabels(tasks if show_y else [""] * len(tasks))
+        self.label(xlabel=xlabel, ylabel="", title=self.name)
+
+    def measure_fit(self):
+        """Measure the drawn axes and xlabel widths in mm; call BEFORE ``save`` closes the figure.
+
+        The metric label is centred under the axes, so one wider than the axes overhangs it and
+        *sets* the tight-crop width — silently blowing the row's width budget, which is split on the
+        assumption that the axes is the widest thing in each panel. Sets ``self.axes_mm`` and
+        ``self.xlabel_mm`` so the entry point can report the margin and the check stays visible on
+        every run instead of being rediscovered from a broken layout.
+        """
+        import matplotlib.pyplot as plt
+
+        plt.figure(self.fig.number)
+        plt.tight_layout()
+        self.fig.canvas.draw()
+        r = self.fig.canvas.get_renderer()
+        self.axes_mm = self.ax.get_window_extent().width / self.fig.dpi * 25.4
+        self.xlabel_mm = self.ax.xaxis.get_label().get_window_extent(r).width / self.fig.dpi * 25.4
+        return self.axes_mm, self.xlabel_mm
+
+
+class TaskMetricBoxPlot(_HorizontalTaskPanel):
+    """One HORIZONTAL box-with-dots per Task for a per-model technical metric.
+
+    Tasks run down the y axis (first on top, as everywhere else in the repo) and the metric runs
+    along a log x axis. Three of these sit side by side as one row — runtime, image size and output
+    dimension — sharing the task axis, so only the leftmost panel draws its tick labels
+    (``show_y``). See ``_box_row_cells`` for how the row's widths are split.
 
     Values ``<= 0`` are treated as NOT MEASURED, because Airtable stores a ``-1`` sentinel for a
-    benchmark that was never run. They are skipped rather than imputed, and every box's tick label
-    carries its own ``n`` so a reader can never mistake a thin sample for a complete one.
+    benchmark that was never run. They are skipped rather than imputed. ``self.coverage`` records
+    ``{task: (n_measured, n_total)}``, which the caller prints and writes to
+    ``technical_metrics_summary.csv``.
+
+    **The per-task n is NOT in the tick labels**, unlike the earlier vertical version of this panel.
+    A shared axis can carry only one label set, and coverage differs per metric (runtime is
+    129/57/10, image size and output dimension are both 131/58/19), so a single labelled ``n`` would
+    be wrong for two panels out of three. It lives in the summary CSV and the run log instead — **a
+    caption must state that the runtime box for Sampling rests on 10 of 19 models.**
 
     A Task with **no** measurements still gets its slot, marked "not measured" in the neutral colour
-    instead of being dropped. That matters for the runtime panel: none of the 19 Sampling models have
-    a 1000-molecule benchmark, and silently showing a two-box panel would read as though the hub had
-    only two kinds of model. ``self.coverage`` records ``{task: (n_measured, n_total)}`` for the
-    caller to report.
+    instead of being dropped: an absent box is information, an absent category is a misreading.
 
-    The y axis is logarithmic by default: both metrics used here span more than a decade (runtime
-    17.5-1491 s, image size 291-10242 MB) and a linear axis flattens the bulk of the distribution
-    against the floor.
-
-    Tick labels are single-line and **rotated 30 degrees**. Stacked horizontally they do not fit: at
-    6 pt "Representation" alone is ~20 mm wide, so three of them need the full 60 mm of panel and
-    already touched at that size. Rotating is what lets the panel shrink to 45 mm square.
+    The metric axis is logarithmic by default — all three metrics span more than a decade (runtime
+    16-1626 s, image size 291-10242 MB, output dimension 1-5000) and a linear axis flattens the bulk
+    of each distribution against the floor.
 
     Parameters
     ----------
     df       : the (Status == "Ready") metadata DataFrame.
     column   : the metric column to draw.
     name     : output file stem.
-    ylabel   : y-axis label, including units.
-    log      : logarithmic y axis (default True).
-    rotation : x tick label rotation in degrees; 0 draws them horizontally (needs a wider panel).
+    xlabel   : metric-axis label, including units.
+    log      : logarithmic metric axis (default True).
+    show_y   : ``False`` hides the task tick labels (keeping the tick marks) for the second and third
+               panels of the row, which read off the first. Such a panel **cannot be placed on its
+               own** — it has no category axis.
     cells    : footprint on the reference grid as ``(rows, cols)``.
     """
 
-    def __init__(self, ax=None, df=None, column=None, name="task_metric", ylabel="",
-                 log=True, rotation=30, cells=SMALL_SQUARE):
+    #: Box body and swarm geometry, in category-axis data units (1.0 = one task row). The swarm band
+    #: is as wide as the box on purpose: these panels are ~6 mm per row, and at the old 0.10 jitter
+    #: 131 Annotation points piled into a ~1 mm line. The box is unfilled (house style), so the
+    #: swarm is what carries the distribution and the box only marks the quartiles.
+    _BOX_WIDTH = 0.5
+    _JITTER = 0.20
+
+    def __init__(self, ax=None, df=None, column=None, name="task_metric", xlabel="",
+                 log=True, show_y=True, cells=SMALL_SQUARE):
         BasePlot.__init__(self, ax=ax, cells=cells)
         self.name = name
         ax = self.ax
@@ -184,251 +398,320 @@ class TaskMetricBoxPlot(BasePlot):
 
         tasks = [t for t in TASK_COLORS if (df["Task"] == t).any()]
         self.coverage = {}
-        labels = []
         for i, task in enumerate(tasks):
             sub = df.loc[df["Task"] == task, column]
             vals = sub[sub > 0].to_numpy(dtype=float)
             self.coverage[task] = (len(vals), len(sub))
             if len(vals):
-                box_with_jitter(ax, vals, i, TASK_COLORS[task], rng=rng, point_size=3,
-                                point_alpha=0.55, jitter_width=0.10)
-                labels.append(f"{task} ({len(vals)})")
+                box_with_jitter(ax, vals, i, TASK_COLORS[task], vert=False,
+                                width=self._BOX_WIDTH, jitter_width=self._JITTER,
+                                rng=rng, point_size=3, point_alpha=0.55)
             else:
-                # Keep the slot. An absent box is information; an absent category is a misreading.
-                # Placed mid-height in axes coordinates (get_xaxis_transform: data x, axes y) so it
-                # sits where the box would have been, and needs no y value on a log scale.
-                ax.text(i, 0.5, "not\nmeasured", ha="center", va="center", linespacing=1.15,
-                        transform=ax.get_xaxis_transform(), fontsize=stylia.FONTSIZE_SMALL,
+                # Keep the slot. Placed mid-width in axes coordinates (get_yaxis_transform: axes x,
+                # data y) so it sits where the box would have been, needing no x value on a log scale.
+                ax.text(0.5, i, "not measured", ha="center", va="center",
+                        transform=ax.get_yaxis_transform(), fontsize=stylia.FONTSIZE_SMALL,
                         color=REFERENCE_LINE)
-                labels.append(f"{task} (0/{len(sub)})")
 
-        if log:
-            ax.set_yscale("log")
-        ax.set_xlim(-0.6, len(tasks) - 0.4)
-        ax.set_xticks(range(len(tasks)))
-        ax.set_xticklabels(labels, rotation=rotation or 0,
-                           ha="right" if rotation else "center")
-        self.label(ylabel=ylabel, title=name)
+        self._task_axis(tasks, show_y, xlabel, log=log)
 
 
-def _spread(ys, gap):
-    """Push a column of label centres apart so consecutive ones are at least ``gap`` apart.
+class TaskOutputDimensionCirclesPlot(_HorizontalTaskPanel):
+    """Output Dimension per Task as **decade-binned, area-proportional circles**.
 
-    ``ys`` are the natural positions for ONE side of a pie, sorted top-down. Returns the adjusted
-    positions, keeping the column centred where it started so it does not drift off the panel.
-    """
-    out = list(ys)
-    for i in range(1, len(out)):                       # cascade downwards
-        out[i] = min(out[i], out[i - 1] - gap)
-    for i in range(len(out) - 2, -1, -1):              # and back up, in case the cascade ran long
-        out[i] = max(out[i], out[i + 1] + gap)
-    shift = (ys[0] + ys[-1]) / 2 - (out[0] + out[-1]) / 2
-    return [y + shift for y in out]
+    A drop-in replacement for the box-and-swarm version of this panel: same task axis, same
+    horizontal shape, same footprint. The swarm was the wrong mark for this column — Output Dimension
+    is heavily **tied** (68 of 131 Annotation models output a single value and 100 of them fall in the
+    1-9 bin; 100 and 1000 recur across Representation and Sampling), so jittered points piled onto a
+    handful of x positions and the visual density said more about the jitter than about the data.
 
+    Binning by decade replaces overplotting with an explicit count: one circle per (task, decade),
+    **area proportional to the number of models**, drawn at the bin's *geometric centre* so it sits
+    between the two decade ticks that bound it rather than on top of one of them — a circle on the
+    10² tick would read as "exactly 100", which is a real value in this column.
 
-def _decollide(ax, texts):
-    """Separate outside pie labels vertically, per side, once they have been drawn.
+    *Area, not diameter, carries the count* — the perceptually correct choice for a count, and the
+    same convention as every other sized mark in the repo. The 9 non-empty bins span 2 to 100
+    models, a 50x range, which is a 7.1x range in diameter; ``_MAX_DIAMETER_MM`` pins the largest
+    circle just inside the row pitch, leaving the smallest at ~0.7 mm. There is **no in-panel size
+    key** — at 34 x 31 mm there is nowhere to put one — so exact counts come from
+    ``output_dimension_bins.csv``; read the panel for the pattern (Annotation outputs one value,
+    Representation spreads across three decades, Sampling sits at 10²-10³).
 
-    A wedge's natural label sits at its mid-angle, which collides as soon as two slices are narrow
-    and adjacent: the single non-commercial licence is a 1.7 degree wedge butted against a 13 % one,
-    so their labels land ~0.1 data units apart against a ~0.15 unit line height. Sides are handled
-    independently, since a left and a right label may share a height harmlessly.
-    """
-    fig = ax.figure
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
-    inv = ax.transData.inverted()
-    for sign in (1, -1):
-        side = [t for t in texts if (1 if t.get_position()[0] >= 0 else -1) == sign]
-        if len(side) < 2:
-            continue
-        side.sort(key=lambda t: -t.get_position()[1])
-        heights = []
-        for t in side:
-            bb = t.get_window_extent(renderer)
-            (_, y0), (_, y1) = inv.transform([(bb.x0, bb.y0), (bb.x1, bb.y1)])
-            heights.append(abs(y1 - y0))
-        ys = _spread([t.get_position()[1] for t in side], max(heights) * 1.05)
-        for t, y in zip(side, ys):
-            t.set_position((t.get_position()[0], y))
-
-
-def _pie(ax, labels, values, colors):
-    """House-style pie: slices clockwise from 12 o'clock, labelled OUTSIDE with count and share.
-
-    Labelling in place rather than with a legend keeps the panel self-contained, but it only works
-    while every slice is wide enough to own a label — so a pie built through this helper should have
-    a handful of comparable slices, not a long tail (a 1-of-208 slice is a 1.7 degree wedge that can
-    be neither seen nor labelled). Push detail like that to a bar panel instead.
-    """
-    values = np.asarray(values, dtype=float)
-    total = values.sum()
-    # A share under 0.5 % rounds to "0 %", which reads as none at all — the single non-commercial
-    # licence is 1/208 = 0.5 %. Show "<1 %" instead so a real slice is never labelled zero.
-    shares = ["<1%" if 0 < v / total < 0.005 else f"{v / total:.0%}" for v in values]
-    _wedges, texts = ax.pie(
-        values, radius=1.0, startangle=90, counterclock=False, colors=colors,
-        labels=[f"{l}\n{int(v)} ({s})" for l, v, s in zip(labels, values, shares)],
-        labeldistance=1.12,
-        textprops=dict(fontsize=stylia.FONTSIZE_SMALL, linespacing=1.2, ha="center"),
-        wedgeprops=dict(edgecolor="white", linewidth=0.6))
-    ax.set_aspect("equal")
-    _decollide(ax, texts)
-
-
-class ArchitecturePiePlot(BasePlot):
-    """Share of models whose container is built for ARM64 as well as x86-64.
-
-    A two-slice pie, labelled outside with the count and percentage, so it needs no legend. Note the
-    underlying field only ever holds ``AMD64`` or ``AMD64,ARM64`` — there is no ARM-only build, so
-    this is "also built for ARM" versus "x86 only", not a three-way split.
-
-    This is a **snapshot**, not a trend: it reflects the metadata as staged, and the share has moved
-    a long way (45 % dual-arch among 2021 models, 77 % among 2026 ones), so the incorporation-date
-    range of the source data belongs in any caption.
+    ``self.bins`` holds the ``{task: {decade: count}}`` cross-tab for the caller to write out.
 
     Parameters
     ----------
-    df    : the (Status == "Ready") metadata DataFrame.
-    cells : footprint on the reference grid as ``(rows, cols)``.
+    df     : the (Status == "Ready") metadata DataFrame.
+    column : the metric column to bin (``"Output Dimension"``).
+    name   : output file stem.
+    xlabel : metric-axis label.
+    show_y : ``False`` hides the task tick labels; see :class:`_HorizontalTaskPanel`.
+    cells  : footprint on the reference grid as ``(rows, cols)``.
     """
 
-    def __init__(self, ax=None, df=None, cells=SMALL_SQUARE):
+    #: Diameter of the largest circle. The row pitch at this footprint is ~5.9 mm, so 4.6 mm keeps
+    #: the biggest bin inside its own row with a visible gap to its neighbours.
+    _MAX_DIAMETER_MM = 4.6
+
+    def __init__(self, ax=None, df=None, column="Output Dimension", name="output_dimension",
+                 xlabel="Output dimension", show_y=True, cells=SMALL_SQUARE):
         BasePlot.__init__(self, ax=ax, cells=cells)
-        self.name = "docker_architecture"
+        self.name = name
+        ax = self.ax
 
-        counts = (df["Docker Architecture"].map(ARCH_DISPLAY)
-                  .value_counts()
-                  .reindex(list(ARCH_COLORS))
-                  .dropna())
-        self.counts = counts.astype(int).to_dict()
-        _pie(self.ax, list(counts.index), counts.to_numpy(dtype=float),
-             [ARCH_COLORS[k] for k in counts.index])
-        self.label(title="Docker build architecture")
+        tasks = [t for t in TASK_COLORS if (df["Task"] == t).any()]
+        vals = df[column]
+        # Values <= 0 would have no decade; this column has none (all 208 models are >= 1), but the
+        # guard keeps the panel honest if a -1 sentinel ever appears, as in the runtime column.
+        ok = df[vals > 0]
+        self.n_skipped = len(df) - len(ok)
+        decades = np.floor(np.log10(ok[column].to_numpy(dtype=float))).astype(int)
+        lo, hi = int(decades.min()), int(decades.max())
+
+        self.bins = {}
+        counts, xs, ys, colors = [], [], [], []
+        for i, task in enumerate(tasks):
+            m = (ok["Task"] == task).to_numpy()
+            per = {k: int((decades[m] == k).sum()) for k in range(lo, hi + 1)}
+            self.bins[task] = per
+            for k, c in per.items():
+                if not c:
+                    continue
+                counts.append(c)
+                xs.append(10.0 ** (k + 0.5))     # geometric centre of [10^k, 10^(k+1))
+                ys.append(i)
+                colors.append(TASK_COLORS[task])
+
+        # matplotlib's scatter `s` is an area in points squared, so s proportional to count IS area
+        # proportional to count; the largest bin is pinned to _MAX_DIAMETER_MM and the rest follow.
+        d_max_pt = self._MAX_DIAMETER_MM / 25.4 * 72.0
+        s_max = d_max_pt ** 2
+        cmax = max(counts)
+        ax.scatter(xs, ys, s=[s_max * c / cmax for c in counts], color=colors,
+                   edgecolors="none", zorder=3)
+
+        # Task axis FIRST: it applies the log scale, which installs a LogLocator and would discard
+        # any ticks set before it. Then ticks on the decade EDGES, so the circles visibly sit inside
+        # the intervals they summarise rather than on the boundaries.
+        self._task_axis(tasks, show_y, xlabel, log=True)
+        ax.set_xlim(10.0 ** (lo - 0.15), 10.0 ** (hi + 1.15))
+        ax.set_xticks([10.0 ** k for k in range(lo, hi + 2)])
 
 
-class LicenseClassPiePlot(BasePlot):
-    """Licence composition as a pie — the compositional counterpart to the ``license`` bar panel.
+def _donut(ax, labels, values, colors, *, ring=0.42, center_value=None, hatches=None):
+    """House-style donut: ring clockwise from 12 o'clock, **no labels on the wedges**.
+
+    Labels never go on the wedges because there is nowhere to put them. At the width this is used
+    for (30 mm, one cell) labelling around the ring is not merely tight but geometrically impossible:
+    ``"Non-commercial 1 (<1%)"`` is 20.07 mm of text and even the name alone is 13.46 mm, so labels on
+    two sides would consume ~27 mm of the 30 mm before the circle got any. The caller therefore supplies
+    a legend beneath, which is also what rescues the 1-of-208 wedge — at 1.7 degrees it can carry no
+    label of its own however much room the panel has.
+
+    The hole is not decoration: it holds the **total**, which a pie has nowhere to put, so the panel
+    states its own n instead of leaving it to the caption. Returns the wedge list.
+    """
+    values = np.asarray(values, dtype=float)
+    wedges, _ = ax.pie(
+        values, radius=1.0, startangle=90, counterclock=False, colors=colors,
+        wedgeprops=dict(width=ring, edgecolor="white", linewidth=0.6))
+    if hatches:
+        # matplotlib draws a hatch in the patch's EDGE colour, which is already white here, so a
+        # patterned wedge reads as white-on-hue and still registers as its colour at a glance.
+        for w, h in zip(wedges, hatches):
+            if h:
+                w.set_hatch(h)
+    ax.set_aspect("equal")
+    # ``ax.pie`` always sets the limits to +/-1.25 to leave room for the outside labels it normally
+    # draws. With no such labels that is 20 % of dead margin on every side, which both shrinks the ring
+    # and opens a ~3.5 mm gap above a legend anchored below the axes. Pull them in to hug the circle.
+    ax.set_xlim(-1.02, 1.02)
+    ax.set_ylim(-1.02, 1.02)
+    if center_value is not None:
+        # The bare total, centred. No unit word beneath it: at this ring size a second line crowds the
+        # hole, and every legend row underneath already says what is being counted.
+        ax.text(0, 0, f"{int(center_value):,}", ha="center", va="center",
+                fontsize=stylia.FONTSIZE_SMALL + 2)
+    return wedges
+
+
+class DonutPlot(BasePlot):
+    """A composition as a ring with its key beneath — the shared base for this figure's three donuts.
+
+    One implementation for `license_class_donut`, `docker_architecture` and `biomedical_area_donut`,
+    so the three read as a set: same 25 mm width, same ring thickness, same legend treatment, same
+    total in the hole. A subclass only prepares ``(labels, values, colors)``.
+
+    **Why a legend rather than labels around the ring.** At 25 mm, labelling around the circle is
+    geometrically impossible rather than merely tight: ``"Non-commercial 1 (<1%)"`` is 20.07 mm of text
+    and the name alone is 13.46 mm, so labels on two sides would take more than the whole panel before
+    the ring got any. The legend sits beneath at one entry per row, carrying name, count and share, so
+    every number is in type rather than estimated off a wedge — which is also the only way a 1.7 degree
+    wedge gets named at all.
+
+    **The hole carries the total**, the one thing a pie has nowhere to put, so each panel states its
+    own n instead of delegating it to the caption.
+
+    Parameters
+    ----------
+    labels  : category names, in draw order (clockwise from 12 o'clock).
+    values  : counts, same order. The legend shows count and share; the hole shows the sum.
+    colors  : one colour per wedge.
+    name    : output file stem.
+    hatches : optional list of matplotlib hatch strings, one per wedge, for a panel that distinguishes
+              categories by **pattern** instead of by hue (see :class:`BiomedicalAreaDonutPlot`). The
+              legend swatches carry the same patterns.
+    """
+
+    def __init__(self, labels, values, colors, *, name, hatches=None, total=None,
+                 ax=None, cells=None):
+        values = np.asarray(values, dtype=float)
+        BasePlot.__init__(self, ax=ax, cells=cells or _donut_cells(len(labels)))
+        self.name = name
+        self.counts = {l: int(v) for l, v in zip(labels, values)}
+        # ``total`` overrides the wedge sum, and it matters wherever a model can belong to more than
+        # one wedge: the Biomedical Area groups sum to 94 across 92 models, and a hole reading 94 would
+        # state a model count that does not exist. Pass the distinct count; the discrepancy against the
+        # legend rows is real and belongs in the caption, not hidden by quietly showing the sum.
+        self.total = int(values.sum() if total is None else total)
+        _donut(self.ax, labels, values, colors, center_value=self.total, hatches=hatches)
+        # Legend rows are in wedge order, so scanning the key top-to-bottom walks the ring clockwise
+        # from 12 o'clock, and they carry the count — the number the ring cannot show.
+        #
+        # NO percentage here, and that is what forces the panel size: the legend must
+        # stay narrower than the ring or tight_layout shrinks the axes to fit it and the ring collapses,
+        # and at 25 mm "AMD64 + ARM64 129 (62%)" is 25.94 mm against a ~20 mm budget. Dropping it costs
+        # little — the share is exactly what the ring already encodes, and the hole gives the total to
+        # divide by, so the panel would have been saying the same thing three ways.
+        rows = [f"{l} {int(v)}" for l, v in zip(labels, values)]
+        # Handle spacing is tighter than the repo default: the legend has to stay narrower than the
+        # ring (see pin_ring), and at 25 mm the architecture key had no room to spare.
+        self.legend({r: c for r, c in zip(rows, colors)},
+                    hatches=({r: h for r, h in zip(rows, hatches)} if hatches else None),
+                    ncol=1, loc="upper center", bbox_to_anchor=(0.5, -0.02),
+                    handlelength=0.9, handletextpad=0.4, labelspacing=0.35,
+                    borderpad=0.1)
+        # A pie axis has no x or y, but stylia's preset leaves "X-axis / Units" placeholders on any
+        # axis whose labels are never set — so this call is what clears them, not decoration.
+        self.label(xlabel="", ylabel="")
+
+    def pin_ring(self):
+        """Force the ring to render at exactly ``DONUT_RING_MM`` across. Call BEFORE ``save``.
+
+        Without this the ring's size is decided by ``tight_layout``, which shrinks the axes to fit a
+        legend wider than it — so a panel's ring shrank or grew according to the length of its longest
+        label, and the three donuts came out visibly different sizes. Pinning makes the family strictly
+        uniform, and because a pie axis draws no frame it also makes the panels' crop widths uniform:
+        the crop is then ring + savefig pad in every case.
+
+        The ring is drawn at radius 1 and the *limits* are scaled instead of the radius, so the wedge
+        geometry, the hatching and the hole all scale together. Runs after ``tight_layout`` for the
+        same reason the bar-label placement does: it needs the axes' final size in millimetres.
+        Sets ``self.axes_mm`` (the natural axes width, i.e. the headroom this panel had).
+        """
+        import matplotlib.pyplot as plt
+
+        plt.figure(self.fig.number)
+        plt.tight_layout()
+        self.fig.canvas.draw()
+        self.axes_mm = self.ax.get_window_extent().width / self.fig.dpi * 25.4
+        # A radius-1 circle spans 2 data units; over an axes `axes_mm` wide with limits +/-lim it
+        # renders at axes_mm / lim across, so lim = axes_mm / target.
+        lim = self.axes_mm / DONUT_RING_MM
+        self.ax.set_xlim(-lim, lim)
+        self.ax.set_ylim(-lim, lim)
+        return self.axes_mm
+
+
+class LicenseClassDonutPlot(DonutPlot):
+    """Licence composition as a **donut** — the compositional counterpart to the ``license`` bar panel.
 
     Slices are the four **reuse classes**, not the ten individual licences. That is a deliberate
     limit, not a shortcut: four of the ten licences cover exactly one model each, which on 208 models
     is a **1.7 degree wedge** — invisible, unlabellable, and impossible to tell apart from the other
-    three. The per-licence detail is what the bar panel is for; a pie can only carry the four-way
-    split. Even here Non-commercial is a single model (0.5 %), so its slice is a hairline whose label
-    is the only thing a reader will actually see.
+    three. The per-licence detail is what the bar panel is for; a circle can only carry the four-way
+    split. Even here Non-commercial is a single model, so its wedge is a hairline that exists on the
+    ring only to be accounted for — it is the legend that actually tells a reader it is there.
 
-    Ordered by count so the hairline slice ends up adjacent to the 12 o'clock start rather than
-    wedged between two large ones.
+    Ordered by count, so the hairline wedge finishes at the 12 o'clock start line rather than being
+    buried between two large ones, where it would read as a rendering artefact.
 
     Parameters
     ----------
     counts : the grouped licence DataFrame (``value``, ``count``, ``class``) from the script.
-    cells  : footprint on the reference grid as ``(rows, cols)``.
     """
 
-    def __init__(self, ax=None, counts=None, cells=SMALL_SQUARE):
-        BasePlot.__init__(self, ax=ax, cells=cells)
-        self.name = "license_class_pie"
-
+    def __init__(self, ax=None, counts=None, cells=None):
         by_class = (counts.groupby("class")["count"].sum()
                     .reindex(list(LICENSE_CLASS_COLORS))
                     .dropna()
                     .sort_values(ascending=False))
-        self.counts = by_class.astype(int).to_dict()
-        _pie(self.ax, list(by_class.index), by_class.to_numpy(dtype=float),
-             [LICENSE_CLASS_COLORS[k] for k in by_class.index])
-        self.label(title="License reuse class")
+        DonutPlot.__init__(self, list(by_class.index), by_class.to_numpy(dtype=float),
+                           [LICENSE_CLASS_COLORS[k] for k in by_class.index],
+                           name="license_class_donut", ax=ax, cells=cells)
 
 
-class TagCloudPlot(BasePlot):
-    """Word cloud of the free-text ``Tag`` field — what the hub actually covers, at finer grain
-    than the curated Biomedical Area / Target Organism fields.
+class ArchitectureDonutPlot(DonutPlot):
+    """Share of models whose container is also built for ARM64, as a donut.
 
-    Font size encodes how many models carry the tag and colour is an ordinal periwinkle shade of the
-    same quantity (:func:`plotting_colors.ordinal_shades`), so colour is redundant with size by
-    design — it makes the ranking scannable without adding a second claim.
+    The underlying field only ever holds ``AMD64`` or ``AMD64,ARM64`` — there is **no ARM-only build**
+    — so this is "also built for ARM" versus "x86 only", not a three-way split.
 
-    **This is the one raster panel in the repo.** ``wordcloud`` renders to a bitmap, which goes into
-    the axes through ``imshow``, so this panel's PDF embeds an image instead of editable vector text —
-    the one documented exception to the vector-PDF rule. It is generated at ``_PX`` pixels square so
-    it stays crisp at the 600 dpi the PNG is saved at.
+    This is a **snapshot, not a trend**: dual-arch is 45 % among models incorporated in 2021 and 77 %
+    among 2026 ones, so the headline share is accumulated stock rather than current build practice, and
+    the incorporation-date range of the source metadata belongs in any caption.
 
-    **A word cloud is not a quantitative encoding.** A word's inked area depends on how many
-    characters it has and whether it was rotated, so "Antimicrobial activity" looks far more than 49x
-    "GPCR" (1). Read ranks from it, never ratios; the exact counts live in ``tag_counts.csv``. Layout
-    is seeded with ``RANDOM_SEED`` so successive runs are identical.
-
-    Two settings exist purely to keep the long tail legible, and both cost encoding fidelity —
-    accepted, because the panel is ordinal anyway. Frequencies are fed in as **sqrt(count)**, which
-    compresses the 49:1 count range to 7:1, and ``relative_scaling`` stays at wordcloud's 0.5, which
-    blends frequency-proportional sizing with rank-only sizing and lifts the smallest words further.
-    Together they make the size scale **ordinal, not proportional** — do not read a ratio off it.
-
-    The numbers behind those choices, all with 59 tags placed: raw counts at 60 mm put **30 tags
-    below 5 pt**, with the ten single-model tags at **2.9 pt**; sqrt at 60 mm still leaves 11 below;
-    sqrt at 90 mm puts the smallest at **5.5 pt** and none below. (``relative_scaling=1.0`` would
-    restore font ~ sqrt(count) and hence area ~ count, but its 7:1 font range drops the tail back to
-    3.6 pt even at 90 mm.) ``self.min_font_pt`` / ``self.below_floor`` re-measure this every run
-    rather than trusting it, and ``self.n_placed`` catches wordcloud silently dropping words it
-    cannot fit.
+    Colours are cobalt / tangerine rather than the turquoise + periwinkle this panel used as a pie:
+    those two now belong to the licence donut beside it, and no hue may mean two different things
+    across a set read together. See ``ARCH_COLORS`` — tangerine is a plain categorical hue here, not a
+    warning about x86-only builds.
 
     Parameters
     ----------
-    counts : DataFrame with columns ``value`` (tag) and ``count``, already sorted descending.
-    cells  : footprint on the reference grid as ``(rows, cols)``. Do not shrink below (3, 3) without
-             re-checking ``below_floor`` — legibility here is set by the panel's physical size.
+    df : the (Status == "Ready") metadata DataFrame.
     """
 
-    _PX = 1400              # raster side in pixels (600 dpi over a 60 mm panel, more over a larger one)
-    #: wordcloud's own default: a compromise between font size tracking frequency (1.0) and tracking
-    #: rank only (0.0). Kept at 0.5 for the tail legibility documented above.
-    _RELATIVE_SCALING = 0.5
-    #: Smallest type this repo will call legible in print.
-    _PRINT_FLOOR_PT = 5.0
-
-    def __init__(self, ax=None, counts=None, cells=(3, 3)):
-        BasePlot.__init__(self, ax=ax, cells=cells)
-        self.name = "tag_cloud"
-        from matplotlib import font_manager
-        from wordcloud import WordCloud
-
-        freq = {v: float(np.sqrt(n)) for v, n in zip(counts["value"], counts["count"])}
-        # Colour by rank, matching the bar-panel gradient: darkest = most models.
-        shades = dict(zip(counts["value"], ordinal_shades(len(counts))))
-        self.n_tags = len(freq)
-
-        # Same typeface as every other panel. wordcloud needs a file path, not a family name, so the
-        # family stylia selected is resolved through matplotlib's font manager rather than hardcoded.
-        font_path = font_manager.findfont(
-            font_manager.FontProperties(family=plt_rc_font_family()))
-
-        wc = WordCloud(
-            width=self._PX, height=self._PX, background_color="white", mode="RGB",
-            font_path=font_path, prefer_horizontal=0.9, max_words=len(freq),
-            relative_scaling=self._RELATIVE_SCALING, random_state=RANDOM_SEED,
-            color_func=lambda word, **kw: mcolors.to_hex(shades[word]),
-        ).generate_from_frequencies(freq)
-
-        # Font sizes come back in canvas pixels; convert to points at this panel's physical width.
-        panel_mm = cells[1] / CELLS_PER_WIDTH * 180.0
-        pt_per_px = panel_mm / self._PX / 25.4 * 72.0
-        sizes = [fs * pt_per_px for _entry, fs, _pos, _orient, _c in wc.layout_]
-        self.n_placed = len(sizes)
-        self.min_font_pt = min(sizes) if sizes else 0.0
-        self.below_floor = sum(1 for s in sizes if s < self._PRINT_FLOOR_PT)
-
-        self.ax.imshow(wc.to_array(), interpolation="bilinear")
-        self.ax.set_axis_off()
-        self.label(title="Model tags")
+    def __init__(self, ax=None, df=None, cells=None):
+        counts = (df["Docker Architecture"].map(ARCH_DISPLAY)
+                  .value_counts()
+                  .reindex(list(ARCH_COLORS))
+                  .dropna())
+        DonutPlot.__init__(self, list(counts.index), counts.to_numpy(dtype=float),
+                           [ARCH_COLORS[k] for k in counts.index],
+                           name="docker_architecture", ax=ax, cells=cells)
 
 
-def plt_rc_font_family():
-    """The concrete font family stylia's style selected (e.g. ``Arial``), for ``wordcloud``."""
-    import matplotlib
-    family = matplotlib.rcParams["font.family"][0]
-    if family in ("sans-serif", "serif", "monospace", "cursive", "fantasy"):
-        return matplotlib.rcParams[f"font.{family}"][0]
-    return family
+class BiomedicalAreaDonutPlot(DonutPlot):
+    """Biomedical Area groups as a donut — **one hue, four fill patterns**.
+
+    The alternative to the `biomedical_area` bar strip on the same four groups and the same 92 Activity
+    prediction models; both are rendered and one is picked at layout time.
+
+    Every wedge is the Annotation crimson, because every model in this panel *is* an Annotation model —
+    colour would be encoding nothing. The categories are separated by **pattern** instead
+    (``BIOAREA_GROUP_HATCH``): solid for the largest group, then progressively lighter-inked patterns,
+    so the ink ordering matches the size ordering, with the cross-hatch on the catch-all where it reads
+    as "mixed". Patterns are white over the crimson, so a wedge still registers as red at a glance.
+
+    That makes this the one panel in the set whose key is **not** redundant with a colour a reader
+    could name: the legend swatches carry the patterns, so it cannot describe a mark the ring does not
+    draw.
+
+    Parameters
+    ----------
+    counts : the grouped Biomedical Area DataFrame (``value``, ``count``) from the script.
+    """
+
+    def __init__(self, ax=None, counts=None, cells=None):
+        labels = counts["value"].tolist()
+        DonutPlot.__init__(self, labels, counts["count"].to_numpy(dtype=float),
+                           [TASK_COLORS["Annotation"]] * len(labels),
+                           hatches=[BIOAREA_GROUP_HATCH.get(l, "") for l in labels],
+                           # Distinct models, set by the script — NOT the wedge sum, which is 94
+                           # because two models carry areas in two different groups.
+                           total=counts.attrs.get("n_models"),
+                           name="biomedical_area_donut", ax=ax, cells=cells)
 
 
 class TaskSubtaskWafflePlot(BasePlot):
@@ -445,12 +728,19 @@ class TaskSubtaskWafflePlot(BasePlot):
     does not have to travel next to ``task_subtask``. Legend labels carry each subtask's count, which
     is exactly what the waffle itself conveys badly.
 
-    The legend is also what makes the panel square. The 16 x 13 grid alone crops to 1.23 (wide and
-    short); the legend band adds height below it and lands the whole panel at **1.05** — so the grid
-    stays landscape. Going the other way is counter-productive here: 13 x 16 (also exact) drops to
-    0.78, because a portrait grid is narrower than the legend, which then sets the width while the
-    extra rows add height. Measured crop aspects: 13 cols 0.78, 14 cols 0.83, 15 cols 0.94, **16
-    cols 1.05**, 18 cols 1.22.
+    The legend is also what makes the panel square. The 16 x 13 grid alone crops landscape (1.23 at
+    60 mm); the legend band adds height below it and squares the panel up. Going the other way is
+    counter-productive: a portrait grid is narrower than the legend, which then sets the width while
+    the extra rows add height (measured at 60 mm: 13 cols 0.78, 14 cols 0.83, 15 cols 0.94, **16 cols
+    1.05**, 18 cols 1.22).
+
+    **At quarter width the legend is what governs, so its labels are abbreviated**
+    (``_LEGEND_ABBREV``). With the full subtask names the two-column key measures 48.3 mm against a
+    45.0 mm panel, so the *legend* sets the crop: the grid gets squeezed to 35.9 mm inside a 47.7 mm
+    page with dead space either side, and the squares fall to 1.99 mm. Abbreviated, the key comes to
+    38.0 mm — narrower than the grid — so the grid sets the width instead and expands to 41.2 mm
+    (**2.57 mm squares**), and the panel crops to 46.2 x 46.1 mm, square to within 0.2 %. The counts
+    are kept: they are the whole point of this legend, and they are not what overflowed.
 
     ``self.blank`` records how many trailing cells of the grid went unfilled, so a caller can flag a
     ragged last row. 16 columns is also one of the few counts that divides 208 exactly (13 full
@@ -465,10 +755,20 @@ class TaskSubtaskWafflePlot(BasePlot):
     cells : footprint on the reference grid as ``(rows, cols)``.
     """
 
+    #: Legend-only abbreviations of the subtask display labels, applied so the two-column key fits
+    #: the quarter-width panel (see the class docstring for the measurements). Deliberately NOT
+    #: folded into ``SUBTASK_DISPLAY``: the full names still reach the ``task_subtask`` tick labels
+    #: and the stacked panels, and this key sits next to them.
+    _LEGEND_ABBREV = {
+        "Activity prediction": "Activity pred.",
+        "Property prediction": "Property pred.",
+        "Similarity search": "Similarity",
+    }
+
     _COLS = 16
     _PAD = 0.16       # white gap between squares, in square-widths
 
-    def __init__(self, ax=None, sub=None, cols=None, cells=(2, 2)):
+    def __init__(self, ax=None, sub=None, cols=None, cells=(QUARTER_WIDTH, QUARTER_WIDTH)):
         BasePlot.__init__(self, ax=ax, cells=cells)
         self.name = "task_subtask_waffle"
         ax = self.ax
@@ -492,13 +792,17 @@ class TaskSubtaskWafflePlot(BasePlot):
         ax.set_axis_off()
 
         # Keyed in fill order (grouped by parent task), not palette order, so scanning the legend
-        # top-to-bottom walks the waffle top-to-bottom. Two columns: at this font "Property
-        # prediction (39)" is ~25 mm wide, so three columns would overrun the 60 mm panel.
-        # Spacing is tightened from the matplotlib defaults on purpose: the legend band is the only
-        # thing adding height below a landscape grid, so its height is what tunes the panel's aspect.
-        self.legend({f"{v} ({int(c)})": SUBTASK_COLORS[v]
+        # top-to-bottom walks the waffle top-to-bottom. Two columns, on abbreviated labels: three
+        # columns would overrun even the 60 mm panel, and at quarter width the unabbreviated two
+        # columns already do (48.3 mm of key against a 45.0 mm panel). Spacing is tightened from the
+        # matplotlib defaults on purpose: the legend band is the only thing adding height below a
+        # landscape grid, so its height is what tunes the panel's aspect.
+        # Left-aligned (``loc="upper left"`` anchored at x=0), not centred: the two columns hold labels
+        # of different lengths, so centring the block leaves its left edge floating away from the
+        # grid's own left edge above it. Aligning both to x=0 lets the key read as part of the panel.
+        self.legend({f"{self._LEGEND_ABBREV.get(v, v)} ({int(c)})": SUBTASK_COLORS[v]
                      for v, c in zip(sub["value"], sub["count"])},
-                    ncol=2, loc="upper center", bbox_to_anchor=(0.5, 0.0),
+                    ncol=2, loc="upper left", bbox_to_anchor=(0.0, 0.0),
                     handlelength=1.1, handletextpad=0.5, labelspacing=0.35,
                     columnspacing=1.0, borderpad=0.1)
         self.label(title="Tasks & subtasks")
@@ -912,141 +1216,152 @@ class PathogenTreemapPlot(BasePlot):
         self.label(title="Models targeting priority pathogens")
 
 
-class PathogenVoronoiPlot(BasePlot):
-    """Voronoi treemap of models per priority pathogen — the space-filling alternative to
-    :class:`PathogenTreemapPlot`, kept alongside it so the two can be compared.
+# --------------------------------------------------------------------------------------
+# Sizing for the two stacked subtask panels (see _stack_cells and save_metadata_figures)
+# --------------------------------------------------------------------------------------
+#: The two cross-tab fields drawn as one vertical unit, TOP FIRST. Output (4 bars) goes above
+#: Source Type (3 bars), and the order is what decides which panel drops its axis title: only the
+#: upper one does, so the unit reads "Number of models" once, under the whole block, where a reader
+#: expects the shared unit of a stacked pair to be. Any cross-tab field NOT listed here gets a
+#: default footprint and its own axis instead of being sized into the unit.
+_SUBTASK_STACK_ORDER = ("Output", "Source Type")
 
-    Two levels, both area-accurate: the panel rectangle is tessellated into one region per
-    pathogen with area proportional to that pathogen's total training compounds, and each region
-    is then tessellated into one cell per model with area proportional to that model's training
-    set. Unlike circle packing a treemap wastes no space, so every cell area is literally its
-    share of the panel and the pathogen regions carry a real quantity rather than being mere
-    enclosures. Cell colour encodes Source Type.
+#: HEIGHT band of a StackedFieldBarPlot, per ``show_xlabel``: figure height minus AXES height, in mm.
+#: Everything ``tight_layout`` spends on x tick labels and the optional axis title.
+#:
+#: MEASURED with ``tools/probe_stack_geometry.py`` and **constant to four decimals** over 19-23 mm and
+#: over both fields — which is the whole reason the solver works in axes height. Re-run the probe if
+#: the font sizes or the axis labels change. Dropping the axis title is worth 3.40 mm of it.
+_AXES_BAND_MM = {True: 11.6634, False: 8.2659}
 
-    ``self.area_error`` records the largest relative area error over every tessellation, and
-    ``self.tiny`` lists cells whose final area is too small to read; callers should surface both
-    rather than imply the areas are exact.
+#: Saved page size minus FIGURE size, in mm — savefig's tight-bbox pad, measured with the same probe.
+#: Height is the same either way. Width differs by 0.03 mm between the two panels because
+#: ``tight_layout`` sizes each one's y tick-label column to its own content; the value here is the
+#: WIDER panel's, so sizing on it keeps NEITHER over the width budget.
+_PAGE_PAD_MM = 1.271
+_PAGE_PAD_W_MM = 1.247
 
-    Parameters
-    ----------
-    df                  : the (Status == "Ready") metadata DataFrame — supplies Source Type.
-    pathogens_path      : CSV with ``pathogen`` / ``code`` columns.
-    training_sizes_path : CSV with ``eosid`` / ``pathogen`` (code) / ``training_size``.
-    cells               : footprint on the reference grid as ``(rows, cols)``.
+#: One canvas pixel, in mm — the finest size difference the layout can express (see ``_LAYOUT_DPI``).
+#: The figure size is the requested footprint rounded to the NEAREST pixel, not floored, so a panel can
+#: come out up to HALF a pixel bigger than asked for. Since the budget is a ceiling, every solved size
+#: is backed off by that half pixel: without it the width lands 0.02 mm over, which is nothing on the
+#: page but does mean the panel no longer honours a number someone else's layout is built on.
+_PIXEL_MM = 25.4 / _LAYOUT_DPI
+
+#: TARGET CROP size of the stacked subtask unit, in mm — the space the pair occupies on the page,
+#: which is what a layout budget is actually about. Width is per panel; height is the two panels
+#: TOGETHER. Requested 2026-08-05.
+#:
+#: NOTE these are saved-page sizes, not ``cells`` footprints. The tick labels and the axis title are
+#: drawn outside the figure canvas, so ``bbox_inches="tight"`` writes a page LARGER than the
+#: footprint — by ~1.27 mm in each direction here. ``_stack_cells`` works backwards from these targets
+#: to the footprints, and the script re-reads the saved PDFs' own ``/MediaBox`` afterwards
+#: (``plotting_base.pdf_page_mm``) and flags any overrun.
+_SUBTASK_STACK_WIDTH_MM = 52.0    # saved page width of EACH panel
+_SUBTASK_STACK_HEIGHT_MM = 50.0   # saved page heights of the two panels SUMMED
+
+#: Bar geometry inside a StackedFieldBarPlot, needed to solve for equal bar thickness across two
+#: panels with different bar counts. ``stacked_hbar`` leaves the y axis autoscaled, so the view
+#: spans the bars' own extent — ``n - 1`` between the first and last centre plus half a bar
+#: overhanging at each end — inflated by matplotlib's 5% margin top and bottom. Thickness is
+#: therefore ``0.8 x axes_height / _y_span(n)``, NOT ``0.8 x axes_height / n``: at 3 bars the overhang
+#: and the margins are worth 10% of the axes, and using the bar count instead leaves the two panels'
+#: bars 3% apart — a small error, but in the one quantity this pair is being sized to equalise.
+_BAR_HEIGHT_DATA = 0.8        # matplotlib's barh default, which stacked_hbar does not override
+_Y_MARGIN = 0.05              # rcParams["axes.ymargin"]; stylia leaves it at the matplotlib default
+
+
+def _y_span(n_bars):
+    """A StackedFieldBarPlot's y view height in DATA units, for ``n_bars`` bars."""
+    return (n_bars - 1 + _BAR_HEIGHT_DATA) * (1 + 2 * _Y_MARGIN)
+
+
+def _stack_axes_heights(n_top, n_bot):
+    """Axes heights in mm for the two stacked subtask panels, as ``(top, bottom)``.
+
+    The whole sizing problem, solved in the one quantity that behaves. Page height is figure height
+    plus a constant pad, and figure height is axes height plus a constant band, so the height budget
+    buys ``_SUBTASK_STACK_HEIGHT_MM`` minus two pads and two bands of axes — and that is what gets
+    divided between the panels.
+
+    It is divided in the ratio of their **y spans**, because drawn bar thickness is
+    ``_BAR_HEIGHT_DATA x axes_height / _y_span(n)`` — so equal thickness means equal
+    ``axes_height / _y_span(n)``, nothing more. Note the split is by span, NOT by bar count: the
+    half-bar overhang and the 5% margins make a 3-bar panel's span 2.8 units rather than 3, and
+    ignoring that is a 3% error in the very thing being equalised.
+
+    Only the LOWER panel carries the axis title, so it spends 3.40 mm more of its figure on the band;
+    the two footprints therefore come out nearly equal even though the *axes* split is 4:3.
     """
-
-    #: Cells below this fraction of the panel are reported in ``self.tiny`` as unreadable.
-    MIN_READABLE_FRACTION = 1e-4
-
-    def __init__(self, ax=None, df=None, pathogens_path=None, training_sizes_path=None,
-                 cells=(3, 3), area_metric="power"):
-        BasePlot.__init__(self, ax=ax, cells=cells)
-        self.name = "pathogen_voronoi" if area_metric == "power" else "pathogen_voronoi_linear"
-        import pandas as pd
-
-        if area_metric not in ("linear", "power"):
-            raise ValueError(f"area_metric must be 'linear' or 'power', got {area_metric!r}")
-        # "linear" is faithful to compound count but illegible here (two models hold ~70% of all
-        # training data); "power" applies the same n ** AREA_EXPONENT the circle panel uses.
-        weigh = (lambda v: float(v)) if area_metric == "linear" else _size_datum
-
-        ax = self.ax
-        pathogens = pd.read_csv(pathogens_path)
-        sizes = pd.read_csv(training_sizes_path)
-
-        source_type = dict(zip(df["Identifier"], df["Source Type"].fillna("External")))
-        display = {r["code"]: abbrev(r["pathogen"]) for _, r in pathogens.iterrows()}
-
-        groups = []
-        for code in pathogens["code"]:
-            g = sizes[sizes["pathogen"] == code]
-            if g.empty:
-                continue
-            groups.append((code, [(r["eosid"], weigh(r["training_size"]))
-                                  for _, r in g.iterrows()]))
-        groups.sort(key=lambda kv: -sum(v for _, v in kv[1]))
-
-        boundary = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
-        errors = []
-
-        # Level 1 — one region per pathogen, area proportional to its total training compounds.
-        regions, err = voronoi_treemap([sum(v for _, v in items) for _, items in groups],
-                                       boundary, seed=RANDOM_SEED, iterations=600)
-        errors.append(err)
-
-        self.tiny = []
-        for (code, items), region in zip(groups, regions):
-            if len(region) < 3:
-                continue
-            # Level 2 — one cell per model inside that pathogen's region.
-            sub, sub_err = voronoi_treemap([v for _, v in items], region,
-                                           seed=RANDOM_SEED, iterations=600)
-            errors.append(sub_err)
-            for (eosid, value), cell in zip(items, sub):
-                if len(cell) < 3:
-                    self.tiny.append((code, eosid, 0.0))
-                    continue
-                frac = polygon_area(cell)
-                if frac < self.MIN_READABLE_FRACTION:
-                    self.tiny.append((code, eosid, frac))
-                ax.add_patch(mpatches.Polygon(
-                    cell, closed=True, linewidth=0.3, edgecolor="white",
-                    facecolor=SOURCE_TYPE_COLORS.get(source_type.get(eosid), BAR_DEFAULT),
-                    zorder=2))
-            # Region outline on top, so pathogen grouping reads over the per-model cells.
-            ax.add_patch(mpatches.Polygon(region, closed=True, fill=False, linewidth=1.1,
-                                          edgecolor="white", zorder=3))
-
-        self.area_error = max(errors)
-
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        ax.set_aspect("equal")
-        ax.set_axis_off()
-        # Draw once so _text_extents below can measure against the live transform.
-        self.fig.canvas.draw()
-
-        # Region labels sit at the centroid, but only where the region is actually wide enough
-        # to hold the text — a treemap fills the panel, so there is no outside to escape to.
-        # Anything skipped is recorded in self.unlabelled for the caller to report.
-        self.unlabelled = []
-        extents = _text_extents(ax, self.fig, display, stylia.FONTSIZE_SMALL)
-        for (code, _items), region in zip(groups, regions):
-            if len(region) < 3:
-                self.unlabelled.append(code)
-                continue
-            text = display[code]
-            w, h = extents[code]
-            span = region[:, 0].max() - region[:, 0].min()
-            tall = region[:, 1].max() - region[:, 1].min()
-            if w > span or h > tall:
-                self.unlabelled.append(code)
-                continue
-            cx, cy = polygon_centroid(region)
-            ax.text(cx, cy, text, ha="center", va="center", fontsize=stylia.FONTSIZE_SMALL,
-                    zorder=4,
-                    path_effects=[patheffects.withStroke(linewidth=1.2, foreground="white")])
-
-        # The rectangle fills the panel, so the colour key goes below it (the tight crop on
-        # save keeps it). No size key: in a treemap the area *is* the value.
-        self.legend(SOURCE_TYPE_COLORS, loc="upper left", bbox_to_anchor=(0.0, -0.01),
-                    ncol=len(SOURCE_TYPE_COLORS))
-        self.label(title="Models targeting priority pathogens")
+    spans = (_y_span(n_top), _y_span(n_bot))
+    axes_total = (_SUBTASK_STACK_HEIGHT_MM - 2 * _PAGE_PAD_MM - _PIXEL_MM
+                  - _AXES_BAND_MM[False] - _AXES_BAND_MM[True])
+    return tuple(axes_total * s / sum(spans) for s in spans)
 
 
-#: Footprint of each stacked subtask panel, keyed by field. Both are 60 mm wide and short. Source
-#: Type's 3 bars at (1, 2) draw 4.9 mm bars; Output holds 4 bars, so at the same footprint its bars
-#: would come out a quarter thinner. Note bar thickness is 0.8 x (axes height) / n_bars and the axes
-#: is the figure MINUS a FIXED ~11.7 mm tick+xlabel band, so thickness does not scale with the
-#: footprint: exactly matching 4.9 mm needs (1 - 11.66/30) x 4/3 + 11.66/30 = 1.204 cells (36.1 mm),
-#: not the 4/3 x 30 = 40 mm a naive ratio suggests. 1.15 is a deliberate compromise chosen for layout
-#: — taller than Source Type, shorter than a full thickness match — leaving Output's bars ~7% thinner
-#: (4.53 mm vs 4.88 mm). Raise to 1.204 to match exactly. Fractional cells are the documented
-#: off-grid exception.
-_SUBTASK_STACK_CELLS = {
-    "Source Type": (1, 2),
-    "Output": (1.15, 2),
-}
+def _stack_cells(n_top, n_bot):
+    """Footprints for the two stacked subtask panels, as ``((rows, cols), (rows, cols))``.
+
+    The solved axes heights (:func:`_stack_axes_heights`) plus each panel's own band give the figure
+    height, which is what ``cells`` expresses — so the footprint is not a fudge factor here, it is the
+    figure. Width is the page budget less the wider panel's measured pad, the same value for both so
+    their axes frames stay registered.
+
+    Returns fractional cells — the documented off-grid exception, unavoidable here since the sizes
+    are physical millimetres rather than grid multiples.
+    """
+    cols = (_SUBTASK_STACK_WIDTH_MM - _PAGE_PAD_W_MM - _PIXEL_MM / 2) / CELL_MM
+    return tuple(((axes_mm + _AXES_BAND_MM[show_xlabel]) / CELL_MM, cols)
+                 for axes_mm, show_xlabel in zip(_stack_axes_heights(n_top, n_bot), (False, True)))
+
+
+def _stack_thickness(n_top, n_bot):
+    """Predicted drawn bar thickness in mm for the two panels, as ``(top, bottom)``.
+
+    Equal by construction — :func:`_stack_axes_heights` solves for exactly that — so this is the
+    *predicted* pair the script checks the *measured* pair
+    (``StackedFieldBarPlot.measure_geometry``) against. A divergence means ``_AXES_BAND_MM`` no longer
+    describes what the renderer does, and the probe needs re-running.
+    """
+    return tuple(_BAR_HEIGHT_DATA * axes_mm / _y_span(n)
+                 for axes_mm, n in zip(_stack_axes_heights(n_top, n_bot), (n_top, n_bot)))
+
+
+#: The horizontal box row occupies 4/6 of the page width. Its height is declared at the top of this
+#: module (``_BOX_ROW_HEIGHT_CELLS``) because the Biomedical Area strip shares it.
+_BOX_ROW_WIDTH_CELLS = 4          # 4/6 of the page width = 120 mm for the whole row
+
+# Measured WIDTH furniture for a horizontal TaskMetricBoxPlot (mm), the counterpart of the height
+# constants above: the task tick-label column costs 14.2 mm, and it is fixed in points, so it does not
+# scale with the footprint. Verified linear to within 0.5 mm over declared widths of 33-54 mm.
+_BOX_FURN_Y_MM = 19.43            # with task tick labels (show_y=True)
+_BOX_FURN_NO_Y_MM = 5.24          # without (show_y=False)
+# Crop pad differs between the two: the labelled panel's tick-label column sits slightly outside what
+# tight_layout reserves for it, so its tight bbox runs ~1.4 mm wider than a bare panel's.
+_BOX_CROP_PAD_Y_MM = 2.57
+_BOX_CROP_PAD_MM = 1.15
+
+
+def _box_row_cells(total_mm, n_panels, height_cells=_BOX_ROW_HEIGHT_CELLS):
+    """Footprints for a row of ``n_panels`` horizontal box panels sharing one category axis.
+
+    Sized so the panels' tight crops **sum to** ``total_mm`` and every panel gets the **same drawn
+    axes width**, which is the point of the exercise: the leftmost panel has to be wider than the
+    others by exactly its tick-label column, or the three metric axes come out different lengths and
+    the row reads as though the metrics had been scaled differently.
+
+    Returns ``(footprints, axes_width_mm)``. The second value is what the caller checks its axis
+    labels against — an xlabel wider than the axes overhangs it and *sets* the crop width, silently
+    blowing the row's budget (the runtime label is 26.2 mm against a 28.9 mm axes, the tightest of
+    the three).
+    """
+    furniture = (_BOX_FURN_Y_MM + _BOX_CROP_PAD_Y_MM
+                 + (n_panels - 1) * (_BOX_FURN_NO_Y_MM + _BOX_CROP_PAD_MM))
+    axes_w = (total_mm - furniture) / n_panels
+    first = (axes_w + _BOX_FURN_Y_MM) / CELL_MM
+    rest = (axes_w + _BOX_FURN_NO_Y_MM) / CELL_MM
+    return ([(height_cells, first)]
+            + [(height_cells, rest)] * (n_panels - 1)), axes_w
 
 
 def save_metadata_figures(counts, df, pathogens_path, training_sizes_path, output_dir,
@@ -1074,74 +1389,139 @@ def save_metadata_figures(counts, df, pathogens_path, training_sizes_path, outpu
     cross_tabs          : optional dict ``field -> wide count DataFrame`` of that field crossed with
                           Subtask (index = field values in draw order, columns = subtasks in
                           stacking order). Each entry adds one :class:`StackedFieldBarPlot` named
-                          ``<field>_by_subtask``, sized from ``_SUBTASK_STACK_CELLS``.
+                          ``<field>_by_subtask``. The two fields in ``_SUBTASK_STACK_ORDER`` are
+                          sized as one stacked unit by ``_stack_cells``; any other field gets a
+                          default footprint and its own count axis.
     """
     top_n = top_n or {}
     cross_tabs = cross_tabs or {}
 
+    # Biomedical Area as FOUR GROUPS over Activity prediction models only — the classification and
+    # the reasoning behind every membership live in ``BIOAREA_GROUP`` (default.py), and the script
+    # does the counting (distinct models per group, not area assignments). Collapsing to four bars
+    # also removes the top-N question entirely: there is no tail left to cut, so no tie to break.
+    _bioarea = counts["Biomedical Area grouped"]
+
     # One entry per panel. Footprints (rows, cols) in 3 cm cells, sized for a 183 x 170 mm Nature
     # page: most panels are 2x2 (60 x 60 mm), the two ten-category fields are quarter-width squares,
-    # the technical boxes are 45 mm squares, and the tag cloud and pathogen panels are 3x3 (90 mm) —
-    # the cloud for legibility, the pathogen panels for their two legends and 15 genus labels.
+    # the technical boxes are 45 mm squares, and the pathogen packing is 2.5x2.5 — wide enough for its
+    # two legends and 15 genus labels.
     plots = [
         TaskSubtaskBarPlot(sub=counts["Subtask"], cells=(2, 2)),
         # Unit alternative to the bars, on the same SUBTASK_COLORS. Reports any unfilled trailing
-        # cells, which the script prints.
-        TaskSubtaskWafflePlot(sub=counts["Subtask"], cells=(2, 2)),
-        # Quarter-width squares (45.75 mm = 183/4), so the two sit side by side in half a page row.
-        # Every named area/organism is Annotation-only, so the bars carry the Annotation hue and the
-        # "Any" catch-all the neutral one — see `catchall_colors` for the one exception.
-        FieldBarPlot(counts=counts["Biomedical Area"], title="Biomedical Area",
-                     n=top_n.get("Biomedical Area"), cells=QUARTER_SQUARE,
-                     color_fn=catchall_colors),
+        # cells, which the script prints. Quarter width (create_figure width=0.25 = 45.0 mm), with
+        # the two stacked subtask panels sized to sit beside it in the other half of the same
+        # 90 mm block — see _stack_cells.
+        TaskSubtaskWafflePlot(sub=counts["Subtask"],
+                              cells=(QUARTER_WIDTH, QUARTER_WIDTH)),
+        # Biomedical Area: a 25 mm strip with the group names centred inside the bars and no y axis,
+        # the same height as the technical box row so the two form one band. One flat FULL-STRENGTH
+        # crimson rather than `catchall_colors`: every bar here is Annotation / Activity prediction,
+        # so colour distinguishes nothing WITHIN the panel and is only a cross-panel cue to the
+        # Annotation task. Full strength rather than a pale tint because the labels carry a white
+        # outline (see hbar) — legibility is the halo's job, not the bar's, so the bar can match the
+        # figure's other crimson marks instead of being washed out to accommodate text.
+        FieldBarPlot(counts=_bioarea, title="Biomedical Area",
+                     cells=_narrow_strip_cells(len(_bioarea)),
+                     colors=TASK_COLORS["Annotation"],
+                     inside_labels=True, xlabel="Models"),
         FieldBarPlot(counts=counts["Target Organism"], title="Target Organism",
                      n=top_n.get("Target Organism"), cells=QUARTER_SQUARE,
                      color_fn=catchall_colors),
-        # Licence: 60 mm rather than quarter-width because "CC-BY-NC-ND-4.0" is a long tick label
-        # and the reuse-class key needs somewhere to sit. The bottom five bars are 1-4 models, so the
-        # legend goes in the empty lower right of the axes rather than below it.
-        FieldBarPlot(counts=counts["License grouped"], title="License",
-                     cells=(2, 2), color_fn=license_colors,
-                     legend_map=LICENSE_CLASS_COLORS),
-        # Pie counterpart to the bar above, at reuse-class granularity — see the class docstring for
-        # why the ten individual licences cannot be a pie. Both pies sit in the 45 mm tier: with only
-        # two to four slices they need no more room, and their labels sit outside the circle anyway.
-        LicenseClassPiePlot(counts=counts["License grouped"], cells=SMALL_SQUARE),
-        # 90 mm square, not 60: at 60 mm the ten single-model tags render at 2.9 pt. See the class
-        # docstring — the panel prints its own measured minimum type size so this stays checkable.
-        TagCloudPlot(counts=counts["Tag"], cells=(3, 3)),
-        # Technical trio. Name and label both derive from RUNTIME_BATCH so they cannot drift from the
-        # column actually plotted. The -1 sentinels are skipped, never imputed, and any task left with
-        # nothing keeps a "not measured" slot (the class reports coverage, which the script prints).
-        TaskMetricBoxPlot(df=df, column=RUNTIME_COLUMN, name=f"runtime_{RUNTIME_BATCH}",
-                          ylabel=f"Runtime for {RUNTIME_BATCH:,} molecules (s)",
-                          cells=SMALL_SQUARE),
-        TaskMetricBoxPlot(df=df, column="Image Size", name="image_size",
-                          ylabel="Docker image size (MB)", cells=SMALL_SQUARE),
-        ArchitecturePiePlot(df=df, cells=SMALL_SQUARE),
+        # The three donuts. One family: 25 mm wide each (75 mm for the set), ring + legend beneath,
+        # total in the hole. Each carries its own numbers, so they need no shared key and can be placed
+        # apart — but they are designed to be read together, which is why no hue means two different
+        # things across them and why the biomedical one separates its groups by PATTERN rather than
+        # spending a fourth palette on categories that are all the same task.
+        LicenseClassDonutPlot(counts=counts["License grouped"]),
+        ArchitectureDonutPlot(df=df),
+        BiomedicalAreaDonutPlot(counts=_bioarea),
+        # Footprint: the crop width is set by where the iterative label placement lands, not by the
+        # packing, so it is NOT monotonic in `cells` — measured crops are 2.3 -> 65.6 mm, 2.4 -> 67.7,
+        # 2.5 -> 63.1, 2.6 -> 67.4. 2.5 is the value that comes in under the 65 mm ceiling; do not
+        # assume a smaller footprint gives a smaller panel here, re-measure.
         PathogenTreemapPlot(df=df, pathogens_path=pathogens_path,
-                            training_sizes_path=training_sizes_path, cells=(3, 3)),
-        # Space-filling alternative to the circle version, on the same n ** AREA_EXPONENT areas
-        # so the two panels are directly comparable. Pass area_metric="linear" for areas strictly
-        # proportional to compound count — faithful, but illegible with this data (see README).
-        # Reports its own area-fit quality and legibility, which the script prints.
-        PathogenVoronoiPlot(df=df, pathogens_path=pathogens_path,
-                            training_sizes_path=training_sizes_path, cells=(3, 3),
-                            area_metric="power"),
+                            training_sizes_path=training_sizes_path, cells=(2.5, 2.5)),
     ]
+
+    # Technical box row: three HORIZONTAL box-with-swarm panels sharing one task axis, occupying
+    # 4/6 of the page width between them. Only the first draws the task tick labels, so it is wider
+    # than the other two by exactly its label column and all three metric axes come out the same
+    # length. Names and labels derive from RUNTIME_BATCH so they cannot drift from the column
+    # plotted. The -1 sentinels are skipped, never imputed, and any task left with nothing keeps a
+    # "not measured" slot (the class reports coverage, which the script prints).
+    # The third panel is decade-binned circles rather than a box: Output Dimension is heavily tied,
+    # so a swarm overplots onto a few x positions and shows jitter instead of data. Same task axis
+    # and footprint, so it drops into the row unchanged.
+    box_row = [
+        (TaskMetricBoxPlot, RUNTIME_COLUMN, f"runtime_{RUNTIME_BATCH}",
+         f"Runtime for {RUNTIME_BATCH:,} molecules (s)"),
+        (TaskMetricBoxPlot, "Image Size", "image_size", "Docker image size (MB)"),
+        (TaskOutputDimensionCirclesPlot, "Output Dimension", "output_dimension",
+         "Output dimension"),
+    ]
+    box_cells, box_axes_mm = _box_row_cells(
+        _BOX_ROW_WIDTH_CELLS / CELLS_PER_WIDTH * stylia.SIZE * 25.4, len(box_row))
+    for (cls, column, name, xlabel), cells in zip(box_row, box_cells):
+        plots.append(cls(df=df, column=column, name=name, xlabel=xlabel,
+                         show_y=name == box_row[0][2], cells=cells))
 
     # Stacked variants: one bar per field value, segmented by subtask, so a single panel carries the
     # joint distribution. No legend — `task_subtask` and the waffle are the shared subtask key.
+    #
+    # The two named in _SUBTASK_STACK_ORDER are drawn as one vertical unit, SOLVED by _stack_cells
+    # from the crop budget (_SUBTASK_STACK_WIDTH_MM x _SUBTASK_STACK_HEIGHT_MM) so the pair fills the
+    # space it is allotted and both panels draw bars of the same thickness. Each keeps its OWN
+    # autoscaled count axis and its own tick labels; only the UPPER panel's axis TITLE is dropped, so
+    # the unit says "Number of models" once, beneath the block.
+    #
+    # Footprints are what we ask for; crops are what gets written. measure_geometry() reports the
+    # real crop and the real bar thickness for each panel below, so neither the budget nor the
+    # equal-thickness claim rests on the constants alone.
+    unit = [f for f in _SUBTASK_STACK_ORDER if f in cross_tabs]
+    stack_cells = {}
+    if len(unit) == 2:
+        n_bars = [len(cross_tabs[f]) for f in unit]
+        top, bot = _stack_cells(*n_bars)
+        stack_cells = {unit[0]: top, unit[1]: bot}
+        want = dict(zip(unit, _stack_thickness(*n_bars)))
+        print(f"\n[subtask stack] target page {_SUBTASK_STACK_WIDTH_MM:g} mm wide x "
+              f"{_SUBTASK_STACK_HEIGHT_MM:g} mm for the pair; declared "
+              + ", ".join(f"{f} {stack_cells[f][1] * CELL_MM:.2f} x "
+                          f"{stack_cells[f][0] * CELL_MM:.2f} mm" for f in unit)
+              + f"; axes autoscaled per panel, xlabel only on {unit[1]}")
+        print(f"{'':16s}predicted bar thickness "
+              + ", ".join(f"{f} {want[f]:.2f} mm ({n} bars)" for f, n in zip(unit, n_bars)))
+
     for field, table in cross_tabs.items():
         plots.append(StackedFieldBarPlot(
             table=table, colors=SUBTASK_COLORS, legend_kw=None,
-            cells=_SUBTASK_STACK_CELLS[field],
+            cells=stack_cells.get(field, (1, 2)),
+            show_xlabel=field != unit[0] if len(unit) == 2 else True,
             name=f"{field.lower().replace(' ', '_')}_by_subtask"))
 
     footprints = {}
+    measured_stacks = {}
     for p in plots:
+        if isinstance(p, _HorizontalTaskPanel):
+            p.measure_fit()          # must happen before save() closes the figure
+        if isinstance(p, FieldBarPlot) and p.label_texts:
+            p.measure_labels()       # likewise
+        if isinstance(p, DonutPlot):
+            p.pin_ring()             # likewise: needs the laid-out axes, before save closes it
+        if isinstance(p, StackedFieldBarPlot):
+            p.measure_geometry()     # likewise
+            measured_stacks[p.name] = p
         p.save(output_dir)
         footprints[p.name] = list(p.cells)
+        if isinstance(p, FieldBarPlot) and p.label_texts:
+            print(f"\n[{p.name}] {len(p.label_texts)} bars, names on the bars (no y axis): "
+                  f"{p.n_inside} centred inside, {p.n_after} set after a too-short bar; "
+                  f"axes {p.axes_mm:.2f} mm vs widest label {p.label_mm:.2f} mm "
+                  f"('{p.widest_label}')"
+                  + ("" if p.label_mm <= p.axes_mm else
+                     "  <-- label OVERHANGS: it sets the crop width, so the strip is no longer "
+                     f"{NARROW_STRIP_MM:g} mm. Abbreviate it in BIOAREA_DISPLAY."))
         if isinstance(p, TaskSubtaskWafflePlot):
             print(f"\n[{p.name}] unfilled trailing cells in the last row: {p.blank}")
         if isinstance(p, TaskMetricBoxPlot):
@@ -1151,27 +1531,63 @@ def save_metadata_figures(counts, df, pathogens_path, training_sizes_path, outpu
             if gaps:
                 print(f"{'':{len(p.name) + 3}}unmeasured models skipped (Airtable -1 sentinel), "
                       f"NOT imputed: " + ", ".join(f"{t} {tot - n}" for t, (n, tot) in gaps.items()))
-        if isinstance(p, ArchitecturePiePlot):
-            print(f"\n[{p.name}] {p.counts} — snapshot, not a trend "
+        if isinstance(p, TaskOutputDimensionCirclesPlot):
+            print(f"\n[{p.name}] decade bins per task (area-proportional circles): "
+                  + "; ".join(f"{t} " + " ".join(f"1e{k}:{c}" for k, c in b.items() if c)
+                              for t, b in p.bins.items()))
+            if p.n_skipped:
+                print(f"{'':{len(p.name) + 3}}{p.n_skipped} non-positive values skipped "
+                      f"(no decade), NOT imputed")
+        if isinstance(p, _HorizontalTaskPanel):
+            fits = p.xlabel_mm <= p.axes_mm
+            print(f"{'':{len(p.name) + 3}}axes {p.axes_mm:.2f} mm wide vs xlabel {p.xlabel_mm:.2f} mm"
+                  + ("" if fits else "  <-- xlabel OVERHANGS: it now sets the crop width, so the "
+                                     "box row no longer sums to its budget. Shorten it."))
+        if isinstance(p, DonutPlot):
+            fits = p.axes_mm >= DONUT_RING_MM
+            print(f"\n[{p.name}] ring pinned to {DONUT_RING_MM:g} mm; this panel's axes had "
+                  f"{p.axes_mm:.2f} mm"
+                  + ("" if fits else f"  <-- AXES NARROWER THAN THE RING: its legend is squeezing the "
+                                     f"axes, so the ring is being clipped. Shorten the longest label."))
+        if isinstance(p, ArchitectureDonutPlot):
+            print(f"{'':{len(p.name) + 3}}{p.counts} — snapshot, not a trend "
                   f"(45% dual-arch among 2021 models vs 77% among 2026)")
-        if isinstance(p, TagCloudPlot):
-            tag = f"[{p.name}]"
-            print(f"\n{tag} {p.n_placed}/{p.n_tags} tags placed"
-                  + ("" if p.n_placed == p.n_tags
-                     else f"  <-- wordcloud DROPPED {p.n_tags - p.n_placed}"))
-            print(f"{tag} smallest type {p.min_font_pt:.2f} pt at {p.cells[1] / CELLS_PER_WIDTH * 180:.0f}"
-                  f" mm wide; below the {TagCloudPlot._PRINT_FLOOR_PT:g} pt print floor: {p.below_floor}")
-            print(f"{tag} RASTER panel — the one exception to the vector-PDF rule. Read ranks, "
-                  f"not ratios; exact counts are in tag_counts.csv")
-        if isinstance(p, PathogenVoronoiPlot):
-            tag = f"[{p.name}]"
-            print(f"\n{tag} max relative area error: {p.area_error:.4f}")
-            print(f"{tag} cells below {PathogenVoronoiPlot.MIN_READABLE_FRACTION:g} of the "
-                  f"panel (unreadable at print size): {len(p.tiny)}")
-            for code, eosid, frac in sorted(p.tiny, key=lambda t: t[2]):
-                print(f"           {code:14s} {eosid}  {frac:.2e}")
-            print(f"{tag} regions too small to label: {len(p.unlabelled)}"
-                  + (f" ({', '.join(p.unlabelled)})" if p.unlabelled else ""))
+
+    # What the pair ACTUALLY came out as. Both checks matter and neither is visible from the
+    # footprints: the crop is the space the panels take on the page, and the bar thickness is whether
+    # the two still read as one unit. A drift in either means the measured furniture constants above
+    # have gone stale.
+    if len(unit) == 2:
+        panels = [measured_stacks.get(f"{f.lower().replace(' ', '_')}_by_subtask") for f in unit]
+        if all(panels):
+            pages = [pdf_page_mm(os.path.join(output_dir, "pdf", p.name + ".pdf")) for p in panels]
+            page_h = sum(h for _, h in pages)
+            page_w = max(w for w, _ in pages)
+            print(f"\n[subtask stack] saved page "
+                  + ", ".join(f"{p.name} {w:.2f} x {h:.2f} mm"
+                              for p, (w, h) in zip(panels, pages))
+                  + f"; pair {page_w:.2f} x {page_h:.2f} mm vs budget "
+                  f"{_SUBTASK_STACK_WIDTH_MM:g} x {_SUBTASK_STACK_HEIGHT_MM:g}")
+            for what, got, want, const in (("width", page_w, _SUBTASK_STACK_WIDTH_MM, "_PAGE_PAD_W_MM"),
+                                           ("height", page_h, _SUBTASK_STACK_HEIGHT_MM, "_PAGE_PAD_MM")):
+                if got > want + 0.1:
+                    print(f"{'':16s}<-- OVER BUDGET on {what} by {got - want:.2f} mm: raise "
+                          f"{const} and re-run")
+            # The band is the figure height the axes did NOT get. The solver divides the budget by
+            # these two bands, so a drift here is exactly what makes the bars unequal.
+            print(f"{'':16s}axes band measured "
+                  + ", ".join(f"{p.name.split('_by_')[0]} {p.fig_h_mm - p.axes_h_mm:.4f} mm"
+                              for p in panels)
+                  + f" vs constants "
+                  + " / ".join(f"{_AXES_BAND_MM[p.show_xlabel]:.4f}" for p in panels))
+            bars = [p.bar_mm for p in panels]
+            ratio = max(bars) / min(bars)
+            print(f"{'':16s}measured bar thickness "
+                  + ", ".join(f"{p.name.split('_by_')[0]} {p.bar_mm:.3f} mm "
+                              f"(pitch {p.pitch_mm:.2f}, {p.n_bars} bars)" for p in panels)
+                  + (f" — EQUAL to {(ratio - 1) * 100:.1f}%" if ratio < 1.01 else
+                     f"  <-- UNEQUAL by {(ratio - 1) * 100:.1f}%: re-calibrate _AXES_BAND_MM from "
+                     f"the line above, which is what the solver splits the budget by"))
 
     with open(os.path.join(output_dir, "figure_cells.json"), "w") as f:
         json.dump(footprints, f, indent=2)

@@ -47,8 +47,8 @@ sys.path.append(os.path.join(root, "..", "src"))
 
 # Importing the plotting stack applies the publication presets (print/article).
 from plots_chembl_performance import (
+    save_activity_ratios_figure,
     save_consensus_figure,
-    save_dataset_sizes_figure,
     save_performance_figures,
     write_figure_cells,
 )
@@ -247,7 +247,7 @@ datasets.sort_values(["pathogen", "size"], ascending=[True, False]).to_csv(
     os.path.join(output_dir, "dataset_sizes.csv"), index=False)
 
 top_fp = {}
-top_fp.update(save_dataset_sizes_figure(datasets, output_dir, pathogen_names))
+top_fp.update(save_activity_ratios_figure(datasets, output_dir, pathogen_names))
 top_fp.update(save_consensus_figure(consensus_entries, output_dir))
 if top_fp:
     write_figure_cells(top_fp, output_dir)

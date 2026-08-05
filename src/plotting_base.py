@@ -19,15 +19,46 @@ per-analysis modules (e.g. :mod:`plots_metadata`).
 import math
 import os
 
+import matplotlib
 import stylia
 
 from plotting_utils import ref_line as _ref_line
+from plotting_utils import sentence_case as _sentence_case
 from plotting_utils import swatch_legend as _swatch_legend
 
 # Publication-ready presets, applied once when this module is imported. Any script
 # that imports the plotting stack gets the same style without repeating the calls.
 stylia.set_format("print")
 stylia.set_style("article")
+
+# Hatch strokes: matplotlib's default 1.0 pt is the same weight as a bar's own outline, which at this
+# figure scale turns a patterned fill into coarse stripes that read as damage rather than as texture.
+# 0.35 keeps a pattern legible while leaving the wedge's colour the thing you see first. Set here with
+# the other presets so every hatched artist in the repo agrees.
+matplotlib.rcParams["hatch.linewidth"] = 0.35
+
+# House style: axis labels read as sentences — "Own-assay AUROC", not "own-assay AUROC". Enforced by
+# wrapping ``stylia.label`` ONCE, here, rather than by capitalising the ~30 label literals spread over
+# the plots_* modules. This is an invariant, and an invariant needs a single enforcement point: with
+# the literals fixed by hand the next label anyone adds quietly breaks the rule, and nothing catches
+# it. Every module sets axis text through ``stylia.label`` / ``st.label`` — the same module object, so
+# one wrap covers them all, existing and future.
+#
+# Only x/y labels are transformed. Titles are not: ``BasePlot.label`` does not render them at all (per
+# the figure conventions, titles and panel letters are added in Illustrator), and the small-multiple
+# cell identifiers that DO reach ``set_title`` are genus abbreviations whose case is already correct.
+#
+# The few panels that bypass stylia and call ``ax.set_xlabel`` directly apply ``sentence_case``
+# themselves — grep for it if you add another.
+if not getattr(stylia.label, "_sentence_cased", False):
+    _stylia_label = stylia.label
+
+    def _label_sentence_case(ax, xlabel=None, ylabel=None, title=None, abc=None):
+        return _stylia_label(ax, xlabel=_sentence_case(xlabel), ylabel=_sentence_case(ylabel),
+                             title=title, abc=abc)
+
+    _label_sentence_case._sentence_cased = True
+    stylia.label = _label_sentence_case
 
 # Reference grid for Nature-style figure footprints. stylia's "print" format is
 # SIZE = 7.09" = 180 mm (Nature two-column width), and create_figure's width/height are
@@ -36,6 +67,55 @@ stylia.set_style("article")
 # A full page (180 x 215 mm) is therefore 6 cells wide by ~7.2 cells tall.
 CELLS_PER_WIDTH = 6
 CELL_CM = 3.0
+
+#: Millimetres per reference cell, for panels that have to reason in physical units.
+CELL_MM = CELL_CM * 10.0
+
+
+def crop_size_mm(fig):
+    """Physical size in mm of the page ``save`` will actually write for ``fig``.
+
+    ``stylia.save_figure`` uses ``bbox_inches="tight"``, so the saved page is the figure's
+    *content* bbox plus ``savefig.pad_inches`` on every side — not the size requested through
+    ``cells``. A panel whose content does not fill its footprint comes out smaller, and one whose
+    legend overhangs the axes comes out larger.
+
+    Call this when a panel has to be sized against another panel's real height (see
+    ``plots_metadata._stack_cells``) rather than against its nominal footprint. ``tight_layout`` is
+    applied first, exactly as ``save_figure`` does, so the measurement matches the file.
+
+    Returns ``(width_mm, height_mm)``. The height is exact; the width can run ~1 mm larger in the
+    saved file, so treat it as a close lower bound.
+    """
+    import matplotlib.pyplot as plt
+
+    plt.figure(fig.number)
+    plt.tight_layout()
+    fig.canvas.draw()
+    bb = fig.get_tightbbox(fig.canvas.get_renderer())
+    pad = 2 * plt.rcParams["savefig.pad_inches"]
+    return ((bb.width + pad) * 25.4, (bb.height + pad) * 25.4)
+
+
+def pdf_page_mm(path):
+    """Physical size in mm of a saved PDF's page, read from its ``/MediaBox``.
+
+    The ground truth for a panel sized against a physical budget, and the only one: ``crop_size_mm``
+    predicts the height exactly but its **width runs ~1.2 mm under** what ``savefig`` writes, so a
+    panel calibrated on it comes out over budget. Use this after ``save`` to check a figure against
+    the space it has to fit; use ``crop_size_mm`` only when the size is needed *before* saving (to
+    size a second panel against this one).
+
+    Returns ``(width_mm, height_mm)``.
+    """
+    import re
+
+    with open(path, "rb") as f:
+        m = re.search(rb"/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)", f.read())
+    if m is None:
+        raise ValueError(f"no /MediaBox in {path}")
+    x0, y0, x1, y1 = (float(v) for v in m.groups())
+    return ((x1 - x0) * 25.4 / 72, (y1 - y0) * 25.4 / 72)
 
 
 class BasePlot:

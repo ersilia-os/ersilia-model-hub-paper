@@ -11,6 +11,7 @@ panel and for one axis of a multi-panel figure.
 """
 
 import matplotlib.colors as mcolors
+import matplotlib.patheffects as patheffects
 import numpy as np
 import stylia as st
 from matplotlib.lines import Line2D
@@ -47,6 +48,35 @@ def abbrev(name, name_map=None):
 # --------------------------------------------------------------------------- #
 # Reference lines & tick labels                                                #
 # --------------------------------------------------------------------------- #
+def sentence_case(text):
+    """Capitalise an axis label's first letter, leaving the rest of the string untouched.
+
+    House style: an axis label reads as a sentence — "Own-assay AUROC", not "own-assay AUROC".
+    Applied centrally (``plotting_base`` wraps ``stylia.label`` with it), so a panel may write its
+    label in whatever case reads best in code and the figures stay consistent regardless.
+
+    Two guards keep it from damaging scientific text, which is why this is a function and not a
+    ``.capitalize()`` call:
+
+    - Only the FIRST character changes, and only if it is a lowercase letter. ``str.capitalize``
+      would lowercase everything after it and turn "own-assay AUROC" into "Own-assay auroc".
+    - The whole string is left alone when its first WORD already carries an internal capital. That
+      protects lowercase-leading tokens whose case is meaningful: "pIC50 (nM)", "cLogP",
+      "mRNA count" must never become "PIC50", "CLogP", "MRNA count".
+
+    Strings starting with punctuation or a digit are unchanged, so "-log10(FDR-adjusted q-value)",
+    "|Spearman rho|" and "12 output columns" pass through. ``None`` and "" pass through too, since
+    ``stylia.label`` treats ``None`` as "leave this axis alone".
+    """
+    if not text:
+        return text
+    words = text.split()
+    head = words[0] if words else ""
+    if any(ch.isupper() for ch in head[1:]):
+        return text
+    return text[0].upper() + text[1:] if text[0].islower() else text
+
+
 def ref_line(ax, value, axis="x", *, linestyle="--", linewidth=0.8, color=None, **kw):
     """One dashed reference line (chance level, threshold, baseline) in the neutral colour."""
     color = REFERENCE_LINE if color is None else color
@@ -70,16 +100,102 @@ def abbrev_ticks(ax, labels, axis="y", *, rotation=None, name_map=None, fontsize
 # --------------------------------------------------------------------------- #
 # Bars                                                                         #
 # --------------------------------------------------------------------------- #
+#: Colour of a bar label according to what it sits on: **white** where it is over its bar, the default
+#: text colour where it is over the page. No backing box and no stroked outline — both were tried and
+#: both are worse at this type size: a chip reads as a sticker pasted over the mark, and a stroke thick
+#: enough to separate dark text from saturated crimson floods the counters of O, e and A so the glyphs
+#: stop reading as type. Reversing the text out of the bar needs no extra ink at all.
+LABEL_ON_BAR_COLOR = "white"
+
+
+def place_inside_labels(ax, texts, values, *, pad_frac=0.025, gap_frac=0.03):
+    """Position and colour bar labels adaptively. Call AFTER ``tight_layout``.
+
+    Two placements, chosen per bar by whether the label actually fits, and the colour follows the
+    placement so no backing box is ever needed:
+
+    * **fits inside** → centred on its bar, reversed out in ``LABEL_ON_BAR_COLOR`` (white);
+    * **does not fit** → immediately after the bar's end, in the default text colour (black), which is
+      what it is sitting on: the page.
+
+    Placement is adaptive because centring unconditionally destroys the mark it labels — at these group
+    sizes *Antiviral* is 6.3 mm of text on a 2.4 mm bar, so a centred label swamps the bar entirely. A
+    bar is never obscured by its own label here, and no label ever straddles the bar's edge, which is
+    what makes a single colour per label sufficient.
+
+    Must run after ``tight_layout``: it weighs a label width fixed in *points* against an axes width
+    layout is still free to change. A label with room neither inside its bar nor after it is tucked
+    inside the right spine and stays **black**, since in that case the bar is short and the space it is
+    tucked into is page, not bar.
+
+    Returns ``(n_inside, n_after)``.
+    """
+    fig = ax.figure
+    fig.canvas.draw()
+    r = fig.canvas.get_renderer()
+    inv = ax.transAxes.inverted()
+    lo, hi = ax.get_xlim()
+    span = (hi - lo) or 1.0
+    n_inside = n_after = 0
+    for t, v in zip(texts, values):
+        bb = inv.transform(t.get_window_extent(r))
+        w = bb[1][0] - bb[0][0]
+        end = (float(v) - lo) / span          # bar's end, in axes fraction
+        if w + 2 * pad_frac <= end:
+            t.set_ha("center")
+            t.set_x(end / 2.0)
+            t.set_color(LABEL_ON_BAR_COLOR)   # reversed out of the bar it sits on
+            n_inside += 1
+        elif end + gap_frac + w <= 1.0 - pad_frac:
+            t.set_ha("left")
+            t.set_x(end + gap_frac)
+            n_after += 1
+        else:
+            t.set_ha("right")                 # no room after the bar; tuck it inside the right spine
+            t.set_x(1.0 - pad_frac)           # short bar, so this lands on the page: stays black
+            n_after += 1
+    return n_inside, n_after
+
+
 def hbar(ax, labels, values, *, colors=None, abbreviate=False, name_map=None,
-         ref=None, xlim=None):
+         ref=None, xlim=None, inside_labels=False, label_color=None, label_size=None,
+         bar_fraction=0.8):
     """Plain horizontal bars, one per (label, value), drawn top-to-bottom in the given order.
 
     The FIRST element sits at the top (natural reading order), so callers pass data already
     ordered the way they want it displayed. ``colors`` is a single colour or a per-bar list.
+
+    ``inside_labels=True`` moves the category names **off the y axis and onto the bars**: the y ticks
+    go away entirely and each name is drawn in front of its own bar. For a very narrow panel this is
+    the difference between a chart and a column of text — a tick-label gutter is a fixed ~14 mm
+    whatever the panel's width, which at 25 mm would leave almost nothing for the bars.
+
+    A label's colour follows what it sits on: **white** where it is centred on its bar, the default
+    black where it is set after a bar too short to hold it (see :func:`place_inside_labels`). No
+    backing box and no outline — reversing the text out of the bar costs no extra ink, and it lets the
+    bar stay full strength rather than being washed out to keep dark text legible over it.
+
+    The caller **must** run :func:`place_inside_labels` after ``tight_layout`` — that is what decides
+    per bar whether the label is centred on it or set just after it, and it cannot be decided at draw
+    time because the label width is fixed in points while the axes width is not. What is drawn here is
+    only a provisional centred position. Returns the list of label ``Text`` artists.
     """
     y = np.arange(len(labels))
-    ax.barh(y, values, color=colors)
-    if abbreviate:
+    ax.barh(y, values, color=colors, height=bar_fraction)
+    texts = []
+    if inside_labels:
+        ax.set_yticks([])
+        # Axes-fraction x, data y — so a label's horizontal position can be clamped against the axes
+        # box later without having to know the count axis' limits.
+        lo, hi = ax.get_xlim()
+        span = (hi - lo) or 1.0
+        for yi, lab, v in zip(y, labels, values):
+            texts.append(ax.text((float(v) / 2.0 - lo) / span, yi, str(lab),
+                                 transform=ax.get_yaxis_transform(),
+                                 ha="center", va="center", zorder=5,
+                                 color=label_color,      # None -> rcParams text.color (black)
+                                 fontsize=label_size or st.FONTSIZE_SMALL))
+    elif abbreviate:
         abbrev_ticks(ax, labels, axis="y", name_map=name_map)
     else:
         ax.set_yticks(y)
@@ -89,6 +205,7 @@ def hbar(ax, labels, values, *, colors=None, abbreviate=False, name_map=None,
         ref_line(ax, ref, axis="x")
     if xlim is not None:
         ax.set_xlim(*xlim)
+    return texts
 
 
 def _wedge_path(frac, *, n=64):
@@ -117,17 +234,24 @@ def pie_scatter(ax, x, y, frac, colors, *, s=26, edgecolor="white", linewidth=0.
     exactly where two overlapping pies need an edge to stay separable. Stroking the wedge also draws
     its two radii, giving the usual pie slice separators.
 
-    ``colors`` is a ``(part, rest)`` pair. ``s`` is the marker area in points squared.
+    ``colors`` is a ``(part, rest)`` pair. ``s`` is the marker area in points squared — a scalar
+    for uniform pies, or an array to size each pie individually (the wedge always takes ``s`` from
+    its own point, so slice and radius stay independent encodings).
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
+    sizes = np.broadcast_to(np.asarray(s, dtype=float), x.shape)
     part, rest = colors
-    ax.scatter(x, y, s=s, marker="o", facecolor=rest, edgecolors=edgecolor,
+    ax.scatter(x, y, s=sizes, marker="o", facecolor=rest, edgecolors=edgecolor,
                linewidths=linewidth, zorder=zorder)
-    for xi, yi, fi in zip(x, y, np.asarray(frac, dtype=float)):
+    for xi, yi, fi, si in zip(x, y, np.asarray(frac, dtype=float), sizes):
         if not np.isfinite(fi) or fi <= 0:
             continue
-        ax.scatter([xi], [yi], s=s, marker=_wedge_path(min(fi, 1.0)), facecolor=part,
+        # A full pie is drawn as a plain circle, not a 360-degree wedge: the wedge path closes
+        # through the centre, so its two radii coincide at 12 o'clock and stroke a seam across an
+        # otherwise solid disc.
+        marker = "o" if fi >= 1.0 else _wedge_path(fi)
+        ax.scatter([xi], [yi], s=si, marker=marker, facecolor=part,
                    edgecolors=edgecolor, linewidths=linewidth, zorder=zorder + 1)
 
 
@@ -156,13 +280,15 @@ def stacked_hbar(ax, labels, fracs, seg_order, seg_colors, *, xlim=(0, 1),
 
 
 def grouped_hbar(ax, y_labels, series, colors, order, *, xlabel="", title="", ref=0.5,
-                 xlim=(0, 1), counts=None, label_fn=None, abbreviate=True, name_map=None):
+                 xlim=(0, 1), counts=None, label_fn=None, abbreviate=True, name_map=None,
+                 legend=True):
     """Grouped horizontal bars: one row per label, ``len(order)`` bars per row.
 
     ``series`` maps ``(label, group) -> value``; ``colors`` maps ``group -> colour``.
     ``counts`` (optional) maps ``(label, group) -> n`` and annotates each bar with its sample
     size at the bar's left end, so a high value on very few points is not read as solid.
-    ``label_fn`` prettifies the legend group labels.
+    ``label_fn`` prettifies the legend group labels. Pass ``legend=False`` on a panel too small to
+    hold one — the key then has to be supplied separately, e.g. as a standalone key panel.
     """
     label_fn = label_fn or (lambda g: g)
     n = len(y_labels)
@@ -188,21 +314,33 @@ def grouped_hbar(ax, y_labels, series, colors, order, *, xlabel="", title="", re
         ax.set_yticklabels(list(y_labels))
     if xlim is not None:
         ax.set_xlim(*xlim)
-    swatch_legend(ax, {label_fn(g): colors[g] for g in order})
+    if legend:
+        swatch_legend(ax, {label_fn(g): colors[g] for g in order})
     st.label(ax, xlabel=xlabel, ylabel="", title=title)
 
 
 # --------------------------------------------------------------------------- #
 # Boxes with jittered points                                                   #
 # --------------------------------------------------------------------------- #
+# House line weight for distribution boxes. matplotlib's boxplot defaults are 1.0 pt — TWICE stylia's
+# ``lines.linewidth`` of 0.5 and twice the axes spines — which made every box the heaviest mark in its
+# panel and buried the swarm it is drawn over. Boxes now sit at the house weight, with the median one
+# step up so it still reads as the summary statistic rather than as another whisker.
+BOX_LINEWIDTH = 0.5
+MEDIAN_LINEWIDTH = 1.4
+
+
 def box_with_jitter(ax, values, position, color, *, face=None, vert=True, width=0.34,
                     filled=True, median_color=None, line_color=None, jitter=True,
                     jitter_width=0.12, cap=CAP_POINTS, point_size=6, point_alpha=0.5,
                     rng=None, showfliers=False, label=None):
     """One box (with optional jittered points) — the single house style for distribution boxes.
 
-    House style: filled box tinted by ``face`` (defaults to ``color``), whiskers/caps/median
-    in :data:`plotting_colors.INK`, jittered points in ``color`` (subsampled to ``cap``).
+    House style: an **unfilled** box outlined in ``color`` at the house line weight, so the jittered
+    swarm underneath stays the thing you read; median in the same colour but drawn heavier; points in
+    ``color``, subsampled to ``cap``. Pass ``face`` explicitly for a tinted body — panels that draw
+    marks *inside* the box need one for contrast — and the median
+    then reverts to :data:`plotting_colors.INK` so it survives on an opaque body.
     Set ``filled=False`` for an outline-only box in ``color``, or ``jitter=False`` to omit the
     point overlay. Returns the matplotlib boxplot dict.
     """
@@ -251,21 +389,39 @@ def box_from_stats(ax, stats, position, color, *, face=None, vert=True, width=0.
 
 
 def _style_box(bp, color, *, face, filled, line_color, median_color, label=None):
-    """Apply the house box style (filled body, INK outlines/median) to a boxplot dict."""
-    median_color = INK if median_color is None else median_color
-    line_color = INK if line_color is None else line_color
+    """Apply the house box style to a boxplot dict: transparent body, ``color`` outline and median.
+
+    The outline (box edge, whiskers, caps) takes the **category colour**, not INK, so a box belongs
+    visibly to its series. The median follows suit **on an unfilled box** and is simply drawn heavier
+    (``MEDIAN_LINEWIDTH``) so it still reads as the summary statistic — on a 3 mm box a dark median
+    was the heaviest mark in the panel and looked like a defect.
+
+    On a **filled** box it falls back to INK, which is the only colour guaranteed to read on an
+    opaque body: several panels pass ``face=color``, where a same-hue median would vanish outright.
+    Override either with ``line_color`` / ``median_color``.
+
+    ``face=None`` leaves the body transparent (the default). Line weights come from
+    ``BOX_LINEWIDTH`` / ``MEDIAN_LINEWIDTH`` rather than matplotlib's heavier boxplot defaults.
+    """
+    line_color = color if line_color is None else line_color
+    if median_color is None:
+        median_color = INK if (filled and face is not None) else line_color
     if label is not None:
         bp["boxes"][0].set_label(label)
     if filled:
-        bp["boxes"][0].set_facecolor(face if face is not None else color)
+        # "none" (not None) is matplotlib's transparent facecolor; None would mean "the default".
+        bp["boxes"][0].set_facecolor(face if face is not None else "none")
         bp["boxes"][0].set_edgecolor(line_color)
     else:
-        bp["boxes"][0].set_color(color)
+        bp["boxes"][0].set_color(line_color)
+    bp["boxes"][0].set_linewidth(BOX_LINEWIDTH)
     for element in ("whiskers", "caps"):
         for line in bp[element]:
-            line.set_color(color if not filled else line_color)
+            line.set_color(line_color)
+            line.set_linewidth(BOX_LINEWIDTH)
     for line in bp["medians"]:
         line.set_color(median_color)
+        line.set_linewidth(MEDIAN_LINEWIDTH)
 
 
 def _jitter_points(ax, vals, position, color, *, vert, jitter_width, cap, point_size,
@@ -370,14 +526,21 @@ def heatmap(ax, matrix, *, cmap, norm, annotate=True, value_fmt="{:.2f}",
 # --------------------------------------------------------------------------- #
 # Legends                                                                      #
 # --------------------------------------------------------------------------- #
-def swatch_legend(ax, mapping, *, loc="lower right", **kw):
-    """A legend of colour swatches from a ``{label: colour}`` mapping (semi-transparent bg)."""
-    handles = [Patch(color=c, label=l) for l, c in mapping.items()]
+def swatch_legend(ax, mapping, *, loc="lower right", hatches=None, **kw):
+    """A legend of colour swatches from a ``{label: colour}`` mapping (semi-transparent bg).
+
+    ``hatches`` optionally maps the same labels to matplotlib hatch strings, for a panel that
+    distinguishes categories by fill pattern rather than by hue. The swatch then carries the pattern
+    as well as the colour, so the key cannot describe a mark the panel does not draw.
+    """
+    hatches = hatches or {}
+    handles = [Patch(facecolor=c, edgecolor="white", hatch=hatches.get(l) or None, label=l)
+               for l, c in mapping.items()]
     return ax.legend(handles=handles, loc=loc, fontsize=st.FONTSIZE_SMALL,
                      **LEGEND_KW, **kw)
 
 
-def nested_size_legend(ax, keys, areas, *, x, y_base, color=None, label_fmt="{:,}",
+def nested_size_legend(ax, keys, areas, *, x, y_base, color=None, label_fmt="{:,}", title=None,
                        fontsize=None, linewidth=0.7, zorder=6):
     """Size key drawn as **nested circles sharing a bottom tangent**, one per key.
 
@@ -389,6 +552,10 @@ def nested_size_legend(ax, keys, areas, *, x, y_base, color=None, label_fmt="{:,
     ``areas`` are the matching scatter ``s`` values (points squared) — pass the *same* function the
     data uses, so the key cannot drift from the marks. A scatter marker's path radius is
     ``sqrt(s) / 2`` points, which is what is converted here.
+
+    Pass ``title`` rather than adding your own text: the label rows are spread at draw time, so only
+    this function knows where the block actually ends, and a caller guessing an offset will collide
+    with the lowest label.
 
     Circles are drawn as ``Ellipse`` patches with the point radius converted separately per axis, so
     they render round whatever the axes aspect or scale. Requires the axes limits to be final: the
@@ -432,6 +599,10 @@ def nested_size_legend(ax, keys, areas, *, x, y_base, color=None, label_fmt="{:,
         ax.text(elbow + rmax * per_pt_x * 0.7, ly, label_fmt.format(key), ha="left", va="center",
                 fontsize=fontsize, zorder=zorder)
 
+    if title:
+        ax.text(x, min(label_ys) - line_h * 1.15, title, ha="center", va="top",
+                fontsize=fontsize, zorder=zorder)
+
 
 def marker_legend(ax, entries, *, loc="lower right", **kw):
     """A legend of point markers (semi-transparent white background).
@@ -453,10 +624,20 @@ def marker_legend(ax, entries, *, loc="lower right", **kw):
 # --------------------------------------------------------------------------- #
 # Specialised bar helper still called by a single panel                        #
 # --------------------------------------------------------------------------- #
-def specificity_bars(ax, df, *, title=""):
-    """Diverging horizontal bars of a per-pathogen specificity index (positive vs negative)."""
-    df = df.dropna(subset=["specificity_index"]).sort_values(
-        "specificity_index", ascending=False)
+def specificity_bars(ax, df, *, title="", order=None):
+    """Diverging horizontal bars of a per-pathogen specificity index (positive vs negative).
+
+    ``order`` is an explicit pathogen sequence, FIRST ELEMENT AT THE TOP (this draws via :func:`hbar`,
+    which inverts the y axis). Pass it to tie the rows to another panel's order; omit it to sort by
+    the index itself, strongest first. Pathogens absent from ``order`` are dropped, so build it from
+    the frame's own values.
+    """
+    df = df.dropna(subset=["specificity_index"])
+    if order:
+        df = df.set_index("pathogen").reindex([p for p in order if p in set(df["pathogen"])]) \
+               .reset_index()
+    else:
+        df = df.sort_values("specificity_index", ascending=False)
     values = df["specificity_index"].values
     colors = [hue("turquoise") if v >= 0 else hue("crimson") for v in values]
     hbar(ax, df["pathogen"].tolist(), values, colors=colors, abbreviate=True, ref=0.0)

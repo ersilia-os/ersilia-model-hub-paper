@@ -40,6 +40,7 @@ Outputs
     data/raw/lazyqsar_benchmark/all_results.csv
     data/raw/airtable_metadata.csv
     data/processed/annotation_preds_ref_library/{model_id}_{version}.csv
+    data/processed/eos1klk_projection/eos1klk_v1.csv
 """
 
 import argparse
@@ -63,6 +64,8 @@ from default import (
     AIRTABLE_SHARE_URL,
     AIRTABLE_VIEW_ID,
     DRUGBANK_URL,
+    PROJECTION_MODEL_ID,
+    PROJECTION_PREDS_SUBDIR,
     REFERENCE_LIBRARY_URL,
 )
 from isaura_utils import download_from_isaura
@@ -85,8 +88,10 @@ args = parser.parse_args()
 raw_dir = os.path.join(repo_root, "data", "raw")
 compound_lists_dir = os.path.join(raw_dir, "compound_lists")
 annotation_dir = os.path.join(repo_root, "data", "processed", "annotation_preds_ref_library")
+projection_dir = os.path.join(repo_root, "data", "processed", PROJECTION_PREDS_SUBDIR)
 os.makedirs(compound_lists_dir, exist_ok=True)
 os.makedirs(annotation_dir, exist_ok=True)
+os.makedirs(projection_dir, exist_ok=True)
 
 
 # =============================================================================
@@ -199,6 +204,35 @@ SECTION1_SOURCES = [
         "dst_dir": os.path.join(raw_dir, "euopenscreen_data", "02_merged"),
         "eosvc_path": "data/raw/euopenscreen_data/02_merged",
     },
+    # NOTE: these per-assay files are MEASUREMENT-level — one row per assay well, so a structure the
+    # library registered as two separate compounds appears as two rows with the same SMILES. Upstream
+    # applies its "Active prevails" (max bin) rule only when building `02_merged`
+    # (`scripts/02_binarise_and_merge.py::merge_pathogen_rows`), never to these files, so
+    # `load_euos_primary` re-applies the SAME rule on read to get one row per compound. If upstream
+    # ever ships a compound-level per-assay output, that dedupe becomes a no-op (its log line will
+    # report 0 collapses) and can be dropped.
+    #
+    # NOTE: two upstream metadata artefacts, neither of which affects the numbers we compute, but both
+    # of which make `assays_annotated_manual.csv` untrustworthy as a COUNT source. Root cause for both:
+    # `00_extract_assays.py` carries the ECBD `deprecated` field through to `00_assay_summary.csv` as
+    # metadata but never FILTERS on it, and the hand-built annotation sheet inherited the extra rows.
+    #
+    #  1. EOS300078 (S. aureus primary) is listed TWICE — 981 actives and 379. Not a transcription
+    #     error: the ECBD dump holds a SUPERSEDED record (deprecated 2025-02-10, intended_target
+    #     EOS300077, 981 actives) beside the current one (intended_target EOS300170, 379). 379 is the
+    #     live figure and the one we use, confirmed independently against the raw extract:
+    #     `activity == "active"` is 379 AND `value >= 70` is 379, matching the assay's documented
+    #     "active = >=70% inhibition" cutoff. 981 corresponds to no cutoff in the data (>=35% gives
+    #     1020, >=40% gives 826) — it is a stale count from the superseded analysis.
+    #  2. EOS300161 (E. coli, non-primary) is a fully deprecated assay — deprecated 2014-11-20, with
+    #     no current record under that id. It was re-registered as EOS300159: identical compound set
+    #     (3,866, 100% overlap) and identical activity labels, only the `value` numbers differ. Both
+    #     ids are still extracted and annotated, so E. coli looks like 6 assays but has 5 live ones.
+    #
+    # Neither touches our analysis: we take labels from `primary_assays_manual.csv` (one correct row
+    # per pathogen, saureus = 379) and EOS300161 is not a primary assay, so it reaches only `02_merged`
+    # (InChIKey lookup, set-valued) and the unused `secondary/` subset. Report upstream; do not
+    # work around it here.
     {
         "description": "EU OpenScreen antimicrobial tasks — binarised assays",
         "repo": "eu-openscreen-antimicrobial-tasks",
@@ -214,6 +248,15 @@ SECTION1_SOURCES = [
         "eosvc_path": "data/raw/euopenscreen_data",
         "include": lambda f: f == "primary_assays_manual.csv",
     },
+    # NOTE: only the `exclusivity/` subtree (112 KB) is read by any code — `_load_exclusivity_task` in
+    # src/eval_euopenscreen.py. `secondary/` (2.7 MB) and `abx_similarity/` (50 MB) are staged but
+    # currently UNUSED. Left in place deliberately rather than filtered out: they are cheap to keep
+    # next to the subset they belong with, and dropping a staged input is a data decision. Narrow the
+    # `include` here if the 52.7 MB ever matters.
+    #
+    # These subsets are COMPOUND-level (one row per structure), unlike the measurement-level per-assay
+    # files above. That mismatch is why `load_euos_primary` collapses duplicate SMILES — without it the
+    # own-assay active count and `exclusive + shared` disagreed by up to 1 per organism.
     {
         "description": "EU OpenScreen subset data (exclusive/non-exclusive/secondary)",
         "repo": "eu-openscreen-antimicrobial-tasks",
@@ -459,6 +502,25 @@ for _, row in annotation_models.iterrows():
 if skipped:
     print(f"  Skipped {len(skipped)} models with no version: {skipped}")
 print(f"  Done. Annotation predictions in {annotation_dir}")
+
+# eos1klk (2D projector, Task=Representation/Projection) is not "Annotation", so the loop above
+# never sees it — fetched here explicitly instead. Release is pinned to v1 (Airtable "v1.2.0"),
+# following the same major-version-only convention as the annotation loop.
+print(f"\nDownloading {PROJECTION_MODEL_ID} (2D projector, reference library)...")
+projection_output_csv = os.path.join(projection_dir, f"{PROJECTION_MODEL_ID}_v1.csv")
+if os.path.exists(projection_output_csv):
+    print(f"  Already exists: {PROJECTION_MODEL_ID} v1")
+else:
+    try:
+        download_from_isaura(
+            model_id=PROJECTION_MODEL_ID,
+            model_version="v1",
+            input_csv=ref_path,
+            output_path=projection_dir,
+        )
+        print(f"    -> {projection_output_csv}")
+    except (Exception, SystemExit) as e:
+        print(f"  WARNING: {PROJECTION_MODEL_ID} not available or failed: {e}")
 
 
 # =============================================================================

@@ -19,14 +19,13 @@ import math
 import os
 
 import numpy as np
-import stylia
 from sklearn.metrics import auc, roc_curve
 
 from plotting_base import BasePlot, GridPlot
-from plotting_colors import (ACTIVE_INACTIVE_COLORS, BAR_DEFAULT, REFERENCE_LINE, auroc_shades,
-                             distinct_colors, hue)
-from plotting_utils import (abbrev, box_with_jitter, marker_legend, nested_size_legend, pie_scatter,
-                            ref_line, roc_panel, swatch_legend)
+from plotting_colors import (ACTIVE_INACTIVE_COLORS, REFERENCE_LINE, auroc_shades,
+                             distinct_colors, hue, swap_pathogen_hues)
+from plotting_utils import (abbrev, box_with_jitter, marker_legend, nested_size_legend, ref_line,
+                            roc_panel)
 from default import RANDOM_SEED
 
 # Full page width: 6 columns of 3 cm. Chosen over 4 columns so the model-rich
@@ -39,12 +38,16 @@ ROC_GRID_COLS = 6
 MODELS_PER_CELL = 4
 
 
-class PathogenDatasetSizesPlot(BasePlot):
-    """Size of every modelled dataset, per pathogen, with its active/inactive split.
+class PathogenActivityRatiosPlot(BasePlot):
+    """Active fraction of every modelled dataset, per pathogen, with dot area encoding its size.
 
-    One box per pathogen over the sizes of its datasets, and one small **pie** per dataset drawn on
-    top: the pie's filled share is that dataset's active fraction. So the box gives the pathogen's
-    size distribution and each circle gives one dataset's balance, in the same panel.
+    Balance is on the position scale and size is demoted to dot area, which is the point — a pie at
+    2.5 mm cannot distinguish 45 % from 50 %, a y position can. (An earlier sibling panel,
+    ``pathogen_dataset_sizes``, swapped the two: size on a log y axis and the balance in a per-dataset
+    pie. It was dropped for exactly that unreadability.)
+
+    A dashed reference line marks the **0.5 balance point**: above it a dataset has more actives than
+    inactives, which is true of 54 of the 193 once added negatives are excluded.
 
     **Added negatives are excluded**, from both the size and the ratio. Airtable's ``n_compounds``
     counts them, so size is ``n_compounds - n_added_negatives - n_added_decoys`` and the active
@@ -53,81 +56,6 @@ class PathogenDatasetSizesPlot(BasePlot):
     for the 54 of 193 datasets that got negatives added: ``mtuberculosis/DR_0012`` goes from 2450
     compounds at a 0.50 active ratio to 1411 at 0.87. Decoys were never used — the column is zero for
     every model — but it is subtracted anyway so the definition does not silently depend on that.
-
-    Pie diameter is FIXED. The y position already encodes size on a log axis, so scaling the circles
-    would double-encode it, and with a 96-to-334,766 range the largest would swamp the panel while
-    the smallest vanished.
-
-    Full page width (180 x 90 mm) is a legibility requirement, not a layout preference: 15 pathogens
-    share the x axis and *P. falciparum* alone holds 51 datasets, so the columns need ~12 mm each for
-    the pies to separate under horizontal jitter. At half width they overlap into a smear.
-
-    A two-slice pie at this size reads as a gestalt, not a measurement — "mostly active" versus
-    "mostly inactive" is clear, 45 % versus 50 % is not. Exact ratios are in the summary CSV.
-
-    Parameters
-    ----------
-    datasets : DataFrame with columns ``pathogen``, ``size`` and ``active_fraction``, one row per
-               modelled dataset (see the script's derivation).
-    pathogen_names : optional dict code -> full species name, for genus-abbreviated tick labels.
-    cells    : footprint on the reference grid as ``(rows, cols)``.
-    """
-
-    #: Marker area in points squared. ~2.5 mm across at 180 mm width — big enough to read a slice,
-    #: small enough that 51 of them in a 12 mm column still separate under jitter.
-    PIE_AREA = 22
-    #: Horizontal jitter as a fraction of the column pitch, so dense columns spread out.
-    JITTER = 0.30
-
-    def __init__(self, ax=None, datasets=None, pathogen_names=None, cells=(3, 6)):
-        BasePlot.__init__(self, ax=ax, cells=cells)
-        self.name = "pathogen_dataset_sizes"
-        self.is_available = datasets is not None and len(datasets) > 0
-        if not self.is_available:
-            self._unavailable()
-            return
-        ax = self.ax
-        rng = np.random.default_rng(RANDOM_SEED)
-
-        # Most datasets first, so the eye starts where the evidence is.
-        order = (datasets.groupby("pathogen")["size"].size()
-                 .sort_values(ascending=False).index.tolist())
-        self.counts = {p: int((datasets["pathogen"] == p).sum()) for p in order}
-
-        c_act = ACTIVE_INACTIVE_COLORS["active"]
-        c_ina = ACTIVE_INACTIVE_COLORS["inactive"]
-        for i, pathogen in enumerate(order):
-            g = datasets[datasets["pathogen"] == pathogen]
-            sizes = g["size"].to_numpy(dtype=float)
-            # Box only — the pies ARE the point overlay, so box_with_jitter's own scatter is off.
-            # Pale fill on purpose: the pies sit inside the box, and at full-strength cobalt the
-            # crimson/silver slices lose contrast against it.
-            box_with_jitter(ax, sizes, i, BAR_DEFAULT, face=hue("cobalt", lighten=0.22),
-                            jitter=False, width=0.55)
-            jitter = rng.uniform(-self.JITTER, self.JITTER, len(g))
-            pie_scatter(ax, i + jitter, sizes, g["active_fraction"].to_numpy(dtype=float),
-                        (c_act, c_ina), s=self.PIE_AREA)
-
-        ax.set_yscale("log")
-        ax.set_xlim(-0.7, len(order) - 0.3)
-        ax.set_xticks(range(len(order)))
-        ax.set_xticklabels([f"{abbrev(p, pathogen_names)}\n({self.counts[p]})" for p in order],
-                           rotation=30, ha="right", style="italic")
-        swatch_legend(ax, {"Active": c_act, "Inactive": c_ina}, loc="upper right")
-        self.label(ylabel="Compounds per dataset", title="Modelled dataset sizes")
-
-
-class PathogenActivityRatiosPlot(BasePlot):
-    """Active fraction of every modelled dataset, per pathogen, with dot area encoding its size.
-
-    The complement of :class:`PathogenDatasetSizesPlot`: that panel puts size on the y axis and the
-    balance inside each mark, this one swaps them. Balance is the quantity a reader can actually read
-    off a position scale here, which is the point — a pie at 2.5 mm cannot distinguish 45 % from 50 %,
-    a y position can. Size drops to the secondary encoding.
-
-    A dashed reference line marks the **0.5 balance point**: above it a dataset has more actives than
-    inactives, which is true of 54 of the 193 once added negatives are excluded. Sizes and ratios use
-    the same added-negative-free definition as the sibling panel.
 
     **Dot area is affine in sqrt(size), not proportional to size.** Sizes span 96 to 334,766 — a
     3,500x range — so area-proportional dots would put a 59x radius ratio on the panel: the biggest
@@ -158,30 +86,58 @@ class PathogenActivityRatiosPlot(BasePlot):
     """
 
     #: Marker area in points squared at ``SIZE_REF`` compounds; every other dot scales as
-    #: ``sqrt(size / SIZE_REF)`` from here. 10,000 compounds -> 30 pt^2 puts the 96-compound floor at
-    #: ~0.7 mm across and the 334,766-compound ceiling at ~4.9 mm.
+    #: ``sqrt(size / SIZE_REF)`` from here. 10,000 compounds -> 22 pt^2 puts the 96-compound floor at
+    #: ~0.5 mm across and the 334,766-compound ceiling at ~4.0 mm. Tied to the panel's physical size:
+    #: dot areas are absolute (points), so condensing the panel without shrinking them proportionally
+    #: just crowds the dense clusters. Rescale this alongside ``cells``.
     SIZE_REF = 10_000
-    SIZE_REF_AREA = 30.0
+    SIZE_REF_AREA = 22.0
     #: Decades shown in the size key.
     SIZE_LEGEND_KEYS = (100, 1_000, 10_000, 100_000)
-    #: Horizontal jitter as a fraction of the column pitch.
-    JITTER = 0.30
+    #: Column widths are proportional to ``n_datasets ** WEIGHT_EXPONENT``, floored at
+    #: ``MIN_WEIGHT`` of the mean. Equal columns waste the panel: the three pathogens with a single
+    #: dataset need no spread at all, while *P. falciparum* needs every millimetre for its 51. The
+    #: fourth root rather than the square root because widths only have to *separate* the dots, not
+    #: encode the count — sqrt gave the singletons a 2.5 mm slot, too narrow for a tick label.
+    WEIGHT_EXPONENT = 0.25
+    MIN_WEIGHT = 0.55
+    #: Jitter as a fraction of each column's own half-width, so dots stay inside their slot.
+    JITTER = 0.62
+    #: Mean bar length as a fraction of the column's half-width.
+    BAR_SPAN = 0.80
     #: Pale palette for the dot fills, and the darker one for their outlines and mean bars. Two
     #: lighten levels each because ``distinct_colors`` uses the second pass to get past the 9-hue
     #: limit — a single level would make pathogen 10 identical to pathogen 1.
     FILL_LEVELS = (0.62, 0.38)
-    ACCENT_LEVELS = (None, 0.55)
+    #: Second accent level is close to the base so that fill-vs-accent contrast is comparable in both
+    #: passes (0.62 against 1.0, and 0.38 against 0.78). That makes the two accent levels similar to
+    #: each other, which is fine — the *fills* carry the hue-repeat distinction, accents only outline.
+    ACCENT_LEVELS = (None, 0.78)
     #: Headroom above 1 and below 0, as a fraction of the axis. The active fraction is bounded, so the
     #: ticks stop at 0 and 1; this only stops the largest dots (~2.5 mm radius) sitting on the spines.
     Y_PAD = 0.07
-    #: Where the nested size key sits, in data coordinates.
-    LEGEND_X = 13.6
-    LEGEND_Y = 0.80
+    #: Tick label angle. Rotated labels on a shared baseline clear each other when
+    #: ``column_width x sin(angle)`` exceeds the label's line height, so the steeper the angle the
+    #: narrower a column may be. 40 deg lets the floored singleton columns hold a one-line name.
+    LABEL_ROTATION = 40
+    #: Nested size key position, in axis fractions of the (normalised) x span. Pushed into the top-right
+    #: corner so it clears the data: the rightmost sparse columns reach ~0.63 active, which the
+    #: "Compounds" title used to sit on. Do not push x further — the widest label ("100,000") extends
+    #: right of the rings and at 0.90 already comes within ~2.5 mm of the spine.
+    LEGEND_X = 0.90
+    LEGEND_Y = 0.88
 
     def _area(self, size):
         return self.SIZE_REF_AREA * np.sqrt(np.asarray(size, dtype=float) / self.SIZE_REF)
 
-    def __init__(self, ax=None, datasets=None, pathogen_names=None, cells=(3, 6)):
+    def _columns(self, counts):
+        """Centre and half-width per pathogen over a normalised 0-1 x span."""
+        w = np.asarray(counts, dtype=float) ** self.WEIGHT_EXPONENT
+        w = np.maximum(w, self.MIN_WEIGHT * w.mean())
+        edges = np.concatenate([[0.0], np.cumsum(w / w.sum())])
+        return (edges[:-1] + edges[1:]) / 2, np.diff(edges) / 2
+
+    def __init__(self, ax=None, datasets=None, pathogen_names=None, cells=(2, 4)):
         BasePlot.__init__(self, ax=ax, cells=cells)
         self.name = "pathogen_activity_ratios"
         self.is_available = datasets is not None and len(datasets) > 0
@@ -194,35 +150,60 @@ class PathogenActivityRatiosPlot(BasePlot):
         order = (datasets.groupby("pathogen")["size"].size()
                  .sort_values(ascending=False).index.tolist())
         self.counts = {p: int((datasets["pathogen"] == p).sum()) for p in order}
-        fills = distinct_colors(len(order), levels=self.FILL_LEVELS)
-        accents = distinct_colors(len(order), levels=self.ACCENT_LEVELS)
+        centres, halves = self._columns([self.counts[p] for p in order])
+        # Both passes go through swap_pathogen_hues so a dot and its outline stay the same hue, and so
+        # the panel matches what pathogen_activity_colors hands step 05.
+        fills = swap_pathogen_hues(order, distinct_colors(len(order), levels=self.FILL_LEVELS))
+        accents = swap_pathogen_hues(order, distinct_colors(len(order), levels=self.ACCENT_LEVELS))
         self.means = {}
 
         # Balance line first, so it sits under the data.
         ref_line(ax, 0.5, axis="y")
-        for i, (pathogen, fill, accent) in enumerate(zip(order, fills, accents)):
+        xs, ys, areas, dot_fills, dot_accents = [], [], [], [], []
+        for pathogen, fill, accent, cx, hw in zip(order, fills, accents, centres, halves):
             g = datasets[datasets["pathogen"] == pathogen]
             ratios = g["active_fraction"].to_numpy(dtype=float)
-            jitter = rng.uniform(-self.JITTER, self.JITTER, len(g))
-            ax.scatter(i + jitter, ratios, s=self._area(g["size"]), facecolor=fill,
-                       edgecolors=accent, linewidths=0.4, zorder=3)
+            jitter = rng.uniform(-self.JITTER * hw, self.JITTER * hw, len(g))
+            xs.append(cx + jitter)
+            ys.append(ratios)
+            areas.append(self._area(g["size"]))
+            dot_fills.extend([fill] * len(g))
+            dot_accents.extend([accent] * len(g))
+            # Mean bar UNDER the dots. Where a pathogen has one dataset the mean lands exactly on its
+            # dot, and a 1.4 pt bar drawn on top swallowed it whole — Campylobacter's dataset is 96
+            # compounds, a 0.6 mm dot. The bar still shows either side of the dot.
             self.means[pathogen] = float(np.mean(ratios))
-            ax.hlines(self.means[pathogen], i - 0.42, i + 0.42, color=accent, linewidth=1.4,
-                      zorder=4)
+            ax.hlines(self.means[pathogen], cx - self.BAR_SPAN * hw, cx + self.BAR_SPAN * hw,
+                      color=accent, linewidth=1.4, zorder=2.5)
+
+        # One scatter call for every dot, ordered largest area first so the small dots land on top and
+        # stay visible. Per-column calls could not do this: a 96-compound dot in one column can sit
+        # under a 300,000-compound dot from its neighbour, and matplotlib takes zorder per artist, not
+        # per point. Opaque fills throughout — overlap is resolved by draw order, not by alpha, which
+        # would otherwise make a stack of pale dots read as a darker (i.e. different) hue.
+        xs = np.concatenate(xs)
+        ys = np.concatenate(ys)
+        areas = np.concatenate(areas)
+        o = np.argsort(-areas, kind="stable")
+        ax.scatter(xs[o], ys[o], s=areas[o],
+                   facecolor=[dot_fills[i] for i in o], edgecolors=[dot_accents[i] for i in o],
+                   linewidths=0.4, zorder=3)
 
         ax.set_ylim(-self.Y_PAD, 1 + self.Y_PAD)
         ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-        ax.set_xlim(-0.8, len(order) - 0.2)
-        ax.set_xticks(range(len(order)))
-        ax.set_xticklabels([f"{abbrev(p, pathogen_names)}\n({self.counts[p]})" for p in order],
-                           rotation=30, ha="right", style="italic")
+        ax.set_xlim(-halves[0], 1 + halves[-1])
+        ax.set_xticks(centres)
+        # Single-line labels: the per-pathogen dataset count lives in dataset_sizes.csv, and the
+        # number of dots in a column shows it anyway. Two-line labels needed twice the perpendicular
+        # clearance, which is what forced the wider columns.
+        ax.set_xticklabels([abbrev(p, pathogen_names) for p in order],
+                           rotation=self.LABEL_ROTATION, ha="right")
         # Size key as nested circles, generated from the same _area function as the dots. Drawn last:
         # it reads the live transform, so the limits above must already be final.
         nested_size_legend(ax, self.SIZE_LEGEND_KEYS,
                            [self._area(k) for k in self.SIZE_LEGEND_KEYS],
-                           x=self.LEGEND_X, y_base=self.LEGEND_Y, color=hue("silver"))
-        ax.text(self.LEGEND_X, self.LEGEND_Y - 0.05, "Compounds", ha="center", va="top",
-                fontsize=stylia.FONTSIZE_SMALL)
+                           x=self.LEGEND_X, y_base=self.LEGEND_Y, color=hue("silver"),
+                           title="Compounds", linewidth=0.5)
         self.label(ylabel="Active fraction of dataset", title="Dataset activity ratios")
 
 
@@ -291,10 +272,14 @@ class RankBoxplotPlot(BasePlot):
         c_act = ACTIVE_INACTIVE_COLORS["active"]
         c_ina = ACTIVE_INACTIVE_COLORS["inactive"]
 
+        # Filled, unlike the house default: these boxes carry NO swarm (jitter=False), so there is
+        # nothing underneath for a transparent body to reveal, and the fill is what makes the
+        # crimson/silver actives-vs-inactives distinction legible — a 0.5 pt silver outline on white
+        # would all but disappear.
         for i, m in enumerate(ordered):
-            box_with_jitter(ax, m["rank_actives"], i * 2 + 0.3, c_act, vert=False,
+            box_with_jitter(ax, m["rank_actives"], i * 2 + 0.3, c_act, face=c_act, vert=False,
                             width=0.5, jitter=False)
-            box_with_jitter(ax, m["rank_inactives"], i * 2 - 0.3, c_ina, vert=False,
+            box_with_jitter(ax, m["rank_inactives"], i * 2 - 0.3, c_ina, face=c_ina, vert=False,
                             width=0.5, jitter=False)
 
         ax.set_xlim(0, 1)
@@ -323,10 +308,51 @@ class PathogenConsensusAurocPlot(BasePlot):
 
     NOTE: this summarises per-model CV AUROCs — it is NOT a per-compound consensus prediction
     (the CV pools share no held-out set, so a true ensemble AUROC is not computable here).
+
+    **Sized to share a page row with** :class:`PathogenActivityRatiosPlot`. That panel crops to
+    121.6 mm, leaving 61 mm of the 183 mm canvas; ``cells=(2.04, 1.94)`` crops to 61.3 x 62.4 mm, so
+    the row totals 182.9 mm and both panels stand 62 mm tall. The two footprint numbers differ because
+    the tight crop adds the y tick labels (~3 mm) to the width but only ~1 mm to the height, so the
+    declaration has to be corrected per axis — do not assume a square crop from a square footprint.
+
+    Three things had to give to reach 62 mm from the original 90 x 120 mm:
+
+    - The x axis starts at **0.68** rather than 0.6. Nothing is plotted below 0.715, so the old lower
+      quarter was empty space that existed only to host the legends.
+    - The **size key is gone** — no legend of scaled markers fits here. The mean-dot area still encodes
+      unique molecules, so the range must go in the caption; ``self.molecule_range`` carries it and the
+      caller prints it. Without that caption line the size encoding is decorative.
+    - The colour key sits **inside the axes, upper left**. Rows run worst-to-best upward, so the top
+      rows' marks are pushed to the right of the panel and that corner is the one region the data does
+      not reach.
     """
 
-    _SIZE_MIN = 15.0    # marker area (pt^2) for the smallest dataset
-    _SIZE_MAX = 300.0   # ... and the largest
+    #: Marker areas (pt^2) for the smallest and largest dataset. Sized for the 62 mm square
+    #: footprint: 15 rows over ~48 mm of axes is a 3.2 mm row pitch, so the largest mean dot has to
+    #: stay under ~3 mm across or it spans its neighbours' rows. Rescale alongside ``cells``.
+    _SIZE_MIN = 5.0
+    _SIZE_MAX = 70.0
+    #: Area of the small per-model dots.
+    _MODEL_AREA = 3.5
+    #: Weight of the min-max guide line per row. At the house 0.5 pt it stays a guide: the eye should
+    #: read the dots and the mean, with the line only tying a row together. It was 0.8 pt, which on a
+    #: 3.2 mm row pitch competed with the 3.5 pt^2 model dots sitting on it.
+    _RANGE_LINEWIDTH = 0.5
+    #: The retention floor, and the left end of the axis. Nothing is plotted below 0.715, so starting
+    #: at 0.6 spent a quarter of the width on empty space that only existed to host the legends —
+    #: which now sit in the empty upper-left corner instead.
+    _AUROC_FLOOR = 0.7
+    _XLIM = (0.68, 1.005)
+    #: Key marker diameter (pt) and row spacing (in font-size units). Smaller than ``marker_legend``'s
+    #: 6 pt default because these are swatches on a 62 mm panel, not measurements — and at 6 pt with
+    #: tight spacing the two dots touch. The spacing is well above matplotlib's 0.5 default for the
+    #: same reason: the rows have to clear the marker, not just the text.
+    _LEGEND_MARKER_SIZE = 4.5
+    _LEGEND_LABELSPACING = 0.9
+    #: Key position in AXES fractions, as ``loc="upper left"``'s anchor. The 0.7 retention line sits at
+    #: ``(0.7 - 0.68) / (1.005 - 0.68)`` = 6.2 % of the width, so anchoring at 0.12 keeps the whole box
+    #: clear of it — pinning to the spine instead put the marker column straight on the dashed line.
+    _LEGEND_ANCHOR = (0.12, 0.98)
 
     def _area(self, c):
         """Marker area for a molecule count, sqrt-scaled between the size range (perceptual)."""
@@ -336,7 +362,7 @@ class PathogenConsensusAurocPlot(BasePlot):
         t = min(1.0, max(0.0, t))
         return self._SIZE_MIN + t * (self._SIZE_MAX - self._SIZE_MIN)
 
-    def __init__(self, entries, ax=None, cells=(4, 3)):
+    def __init__(self, entries, ax=None, cells=(2.04, 1.94)):
         # entries: {"code", "pathogen", "aurocs": [...], "n_molecules": int}
         BasePlot.__init__(self, ax=ax, cells=cells)
         self.name = "pathogen_consensus_auroc"
@@ -350,36 +376,36 @@ class PathogenConsensusAurocPlot(BasePlot):
         self._cmax = float(max(counts)) if counts else 1.0
         y = np.arange(len(entries))
         crimson = ACTIVE_INACTIVE_COLORS["active"]
+        model_c = hue("periwinkle")
         for i, e in enumerate(entries):
             vals = np.asarray(e["aurocs"], dtype=float)
             self.ax.plot([vals.min(), vals.max()], [i, i], color=REFERENCE_LINE,
-                         linewidth=0.8, zorder=1)
-            self.ax.scatter(vals, np.full(len(vals), i), color=BAR_DEFAULT,
-                            s=10, alpha=0.5, zorder=2)
+                         linewidth=self._RANGE_LINEWIDTH, zorder=1)
+            self.ax.scatter(vals, np.full(len(vals), i), color=model_c,
+                            s=self._MODEL_AREA, alpha=0.5, zorder=2)
             self.ax.scatter([vals.mean()], [i], color=crimson, alpha=0.75,
                             s=self._area(e.get("n_molecules", np.nan)), zorder=3)
-        self.ref_line(0.7, axis="x")
+        self.ref_line(self._AUROC_FLOOR, axis="x")
         self.ax.set_yticks(y)
         self.ax.set_yticklabels([abbrev(e["code"], {e["code"]: e["pathogen"]}) for e in entries])
-        self.ax.set_xlim(0.6, 1.0)
+        self.ax.set_xlim(*self._XLIM)
+        self.ax.set_xticks([0.7, 0.8, 0.9, 1.0])
         self.ax.set_ylim(-0.8, len(entries) - 0.2)
 
-        # Two legends (both over the empty <0.7 AUROC region, so never read as data):
-        #   upper-left = colour key (model vs mean); lower-left = molecule-count size key.
-        leg1 = marker_legend(
+        # Colour key INSIDE the axes, upper left. The rows are sorted worst-to-best upward, so the top
+        # rows' dots sit at the RIGHT of the panel and the upper-left corner is the one region no mark
+        # reaches — the best pathogen's range starts around 0.9, well clear of the 0.68 spine. Stacked
+        # (ncol=1) rather than side by side: a horizontal key is ~20 mm wide on a 62 mm panel and would
+        # run under the top rows' range lines. Offset right of the spine so it clears the 0.7 line.
+        marker_legend(
             self.ax,
-            [{"label": "model", "color": BAR_DEFAULT}, {"label": "mean", "color": crimson}],
-            loc="upper left")
-        self.ax.add_artist(leg1)
-        if counts:
-            # Round reference values spanning the observed range (~150 to ~500k molecules).
-            keys = [150, 10_000, 100_000]
-            marker_legend(
-                self.ax,
-                [{"label": f"{kc:,}", "color": crimson,
-                  "markersize": float(np.sqrt(self._area(kc)))} for kc in keys],
-                loc="lower left", title="unique molecules",
-                labelspacing=1.6, borderpad=1.0, handletextpad=1.2)
+            [{"label": "model", "color": model_c, "markersize": self._LEGEND_MARKER_SIZE},
+             {"label": "mean", "color": crimson, "markersize": self._LEGEND_MARKER_SIZE}],
+            loc="upper left", bbox_to_anchor=self._LEGEND_ANCHOR, borderpad=0.3,
+            handletextpad=0.4, labelspacing=self._LEGEND_LABELSPACING)
+        # Size range is reported by the caller rather than keyed on the panel — see the note in
+        # save_consensus_figure.
+        self.molecule_range = (min(counts), max(counts)) if counts else None
 
         self.label(xlabel="cross-validation AUROC", title="")
 
@@ -391,21 +417,19 @@ def save_consensus_figure(entries, output_dir):
     if p.is_available:
         p.save(output_dir)
         footprints[p.name] = list(p.cells)
+        if p.molecule_range:
+            lo, hi = p.molecule_range
+            print(f"[{p.name}] mean-dot area encodes unique molecules per pathogen, "
+                  f"{lo:,} to {hi:,} (sqrt-scaled). NO size key fits at this footprint — "
+                  f"the range belongs in the caption")
     return footprints
 
 
-def save_dataset_sizes_figure(datasets, output_dir, pathogen_names=None):
-    """Save both per-pathogen dataset panels (size on y, and ratio on y); return their footprints.
-
-    The two are alternatives on the same data, kept side by side so the better one can be chosen at
-    layout time: ``pathogen_dataset_sizes`` puts size on the position scale and balance in a pie,
-    ``pathogen_activity_ratios`` swaps them.
-    """
+def save_activity_ratios_figure(datasets, output_dir, pathogen_names=None):
+    """Save the per-pathogen dataset activity-ratio panel; return its footprint dict."""
     footprints = {}
-    for p in (PathogenDatasetSizesPlot(datasets=datasets, pathogen_names=pathogen_names),
-              PathogenActivityRatiosPlot(datasets=datasets, pathogen_names=pathogen_names)):
-        if not p.is_available:
-            continue
+    p = PathogenActivityRatiosPlot(datasets=datasets, pathogen_names=pathogen_names)
+    if p.is_available:
         p.save(output_dir)
         footprints[p.name] = list(p.cells)
         print(f"[{p.name}] {sum(p.counts.values())} datasets over {len(p.counts)} pathogens; "

@@ -52,6 +52,29 @@ RUNTIME_NOT_MEASURED = -1
 RUNTIME_BATCH = 100
 RUNTIME_COLUMN = RUNTIME_COLUMNS[RUNTIME_BATCH]
 
+# Automation accounts to exclude from every community count. GitHub's ``type`` field reports all of
+# these as "User", so they cannot be filtered programmatically and have to be listed. Note the
+# converse trap: matching on the substring "bot" also catches real people (e.g. MuoboTone).
+GITHUB_BOT_ACCOUNTS = {
+    "dependabot[bot]", "github-actions[bot]", "model-request-bot[bot]",
+    "vercel[bot]", "bitnami-bot",
+}
+
+# Known duplicate GitHub handles in the Airtable ``Contributor`` field, mapped to the account the
+# person actually uses. Applied before any contributor is counted, so the same person is never
+# counted twice. This is a data correction, not a display relabelling: without it the distinct
+# contributor count is 31 rather than 30.
+#   Richioo -> Richiio : one model (2023-12-03) filed under a handle that differs from the same
+#                        contributor's other five (2023-08 to 2024-02) by a single character.
+# The Airtable record should be corrected upstream; this mapping is the interim fix.
+# NOTE (2026-08-04): no current consumer. Script 01 stopped counting Airtable contributors when the
+# contributors-over-time panel was dropped, and step 08 counts people from the GitHub API instead.
+# Kept as the record of the upstream duplicate, which is still uncorrected; re-apply it in any script
+# that counts the Airtable ``Contributor`` field.
+CONTRIBUTOR_ALIASES = {
+    "Richioo": "Richiio",
+}
+
 # Shorter display labels for crowded metadata figure axes.
 SUBTASK_DISPLAY = {
     "Property calculation or prediction": "Property prediction",
@@ -60,6 +83,56 @@ BIOAREA_DISPLAY = {
     "Antimicrobial resistance": "AMR",
     "Diarrheal diseases": "Diarrhoea",
 }
+
+# The Annotation subtask the grouped Biomedical Area panel is built from. Restricting to it is what
+# keeps the "Other" bucket honest: `Any` (no disease area) is 22 of the 39 "Property calculation or
+# prediction" models but only 4 of the 92 Activity prediction ones, because generic property
+# predictors (logP, solubility) have no area to declare.
+ACTIVITY_SUBTASK = "Activity prediction"
+
+# Biomedical Area -> one of four groups, for the compact grouped panel. Signed off 2026-08-02.
+#
+# Every raw Airtable value must appear here: the counting step raises on an unmapped value rather than
+# dropping it, so a new area added upstream fails loudly instead of vanishing from the figure.
+#
+# Membership was checked against each model's Target Organism, not inferred from the area name:
+#   Peptic ulcer disease  -> eos9eyo, Helicobacter pylori (bacterial, not the NSAID aetiology)
+#   Diarrheal diseases    -> all Campylobacter / E. coli, i.e. Gram-negative bacteria
+#   Candidiasis, Mycetoma -> Candida albicans, Madurella mycetomatis (fungal; antifungal counts)
+#
+# TWO DELIBERATE STRETCHES, kept because Ersilia's own naming already treats them this way (the
+# S. mansoni model's slug is literally `antimicrobial-activity-smansoni`):
+#   Malaria         -> Plasmodium falciparum is a PROTOZOAN, inside "antimicrobial" only on the broad
+#                      clinical definition.
+#   Schistosomiasis -> Schistosoma mansoni is a multicellular HELMINTH, not a microorganism at all.
+# A caption that says "antimicrobial" therefore covers antibacterial, antifungal, antiprotozoal and
+# antihelminthic activity. Rename the group to "Anti-infective" if that overclaims for a given venue.
+#
+# `Any` (no area declared) goes to Other rather than being dropped, so the four groups account for
+# every Activity prediction model. At this subtask it is only 4 models, so Other stays a genuine
+# residual instead of the 26-model catch-all it would be across all of Annotation.
+BIOAREA_GROUP = {
+    "ADMET": "ADMET",
+    "Antimicrobial resistance": "Antimicrobial",
+    "Tuberculosis": "Antimicrobial",
+    "Malaria": "Antimicrobial",
+    "Pneumonia": "Antimicrobial",
+    "Diarrheal diseases": "Antimicrobial",
+    "Gonorrhea": "Antimicrobial",
+    "Schistosomiasis": "Antimicrobial",
+    "Candidiasis": "Antimicrobial",
+    "Mycetoma": "Antimicrobial",
+    "Peptic ulcer disease": "Antimicrobial",
+    "COVID-19": "Antiviral",
+    "AIDS": "Antiviral",
+    "Hepatitis B": "Antiviral",
+    "Cancer": "Other",
+    "Alzheimer": "Other",
+    "Any": "Other",
+}
+
+#: Catch-all group, pinned last in the panel however large it gets.
+BIOAREA_GROUP_OTHER = "Other"
 
 ERSILIA_MODEL_IDS = {
     "abaumannii":"eos21dr",
@@ -139,54 +212,59 @@ COADD_ENDPOINTS = {
     "mic_10":   ("05_binarised_mic",        COADD_MIC_COL),
 }
 
+# Endpoint backing the cross-organism hit-set analyses of step 06 (overlap, promiscuity,
+# exclusivity). inhib_50 is the CoAdd counterpart of the EU OpenScreen primary screen: ~81,600
+# compounds tested per organism against ~4,500 for mic_10, so it is the only endpoint with enough
+# actives to split by promiscuity. Only the 6 organisms with an inhibition file take part —
+# efaecium and spneumoniae are MIC-only (see COADD_REF_STRAINS).
+COADD_HITSET_ENDPOINT = "inhib_50"
+
 # ---------------------------------------------------------------------------
-# Inter-model correlation step (07)
+# Score matrices and their analyses (steps 07-09)
 # ---------------------------------------------------------------------------
 # Annotation-model predictions on the shared reference library, staged by
 # 00_download_data.py as data/processed/<subdir>/{model_id}_{version}.csv. Every file shares the
 # join columns `key` (compound hash) and `input` (SMILES); output columns are model-specific.
 ANNOTATION_PREDS_SUBDIR = "annotation_preds_ref_library"
 
-# Correlation is computed on a fixed-seed sample of the ~1.35M-compound library (RANDOM_SEED) so
-# the ~1500-node matrix is tractable. Spearman rho is essentially stable at this size; raise
-# CORR_SAMPLE_N (or set it to None to use the full library) for the final, narrowed analysis.
-CORR_SAMPLE_N = 200_000
 # Rows read per chunk when filtering the large prediction files (one is 15.9 GB / 619 columns).
 CORR_CHUNK_SIZE = 200_000
 
-# Top-N hit-overlap depths (user-chosen). Overlap = Jaccard of the top-N highest-scoring compounds.
-TOPN_CUTOFFS = (100, 500)
+# Row-wise normalization (eval_correlations.row_normalize): a compound whose profile norm falls
+# below this divides to inf/NaN. Not a data filter — such rows are counted and reported, never
+# dropped or clipped; the value only sets what counts as "degenerate" for that warning.
+ROW_NORM_EPS = 1e-12
 
-# Per-output-column value-type tagging (computed on the sample):
-#   categorical  : integer-like with <= CATEGORICAL_MAX_UNIQUE distinct values
-#   probability  : all values within [0, 1]  (a known "higher = more" direction)
-#   continuous   : anything else (e.g. molecular weight, logP, free energy)
-# Only probability columns receive top-N overlap; all columns enter the Spearman matrix.
-# CATEGORICAL_MAX_UNIQUE is a display heuristic, not a data filter — revisable.
-CATEGORICAL_MAX_UNIQUE = 10
+# Endpoint-type classification used by tools/build_endpoint_selection_template.py when generating
+# the reviewable template for config/08_endpoint_selection.csv, stratifying by whether an output
+# column measures membrane PERMEABILITY/uptake/efflux/accumulation rather than direct
+# antimicrobial/antiparasitic ACTIVITY (potency). The Airtable "Permeability" Tag alone under-counts
+# this (only 5 of 11 permeability-type models carry that exact tag — e.g. "Efflux susceptibility in
+# gram-negative bacteria" and "Entry-way rules (eNTRy) for gram-negative bacteria" are tagged only
+# "Antimicrobial activity"), so this case-insensitive regex is matched over Title + Tag +
+# Interpretation together: a hit means "permeability", otherwise "activity". Verified to reproduce
+# the same 11 permeability / 25 activity split as a manual title-by-title read, with the matched
+# evidence written out for review. Advisory only — the curated CSV is the source of truth.
+ENDPOINT_TYPE_REGEX = r"permea|retain|accumulat|entry|efflux"
 
-# Case-insensitive regex that ADVISORILY flags a model as toxicity-related in the review CSV
-# (07_group_assignments.csv, column `is_cytotox`), matched against the Airtable
-# Tag / Title / Interpretation / Description fields. Broad on purpose — the precise cytotoxicity
-# FOCUS GROUP is built by the two regexes below, not by this flag.
-CYTOTOX_REGEX = r"cytotox|hepg2|cardiotox|herg|tox21|toxcast|\bdili\b|\btoxic(ity)?\b"
+# ---------------------------------------------------------------------------
+# Reference-library projection step (10)
+# ---------------------------------------------------------------------------
+# eos1klk (Task=Representation, Subtask=Projection) computes four 2D layouts of the SAME
+# ~1.35M-compound reference library staged by 00_download_data.py — one output column pair
+# ({method}_x, {method}_y) per method. Its Task is not "Annotation", so it is invisible to
+# 00_download_data.py's automatic Section 4 loop and is fetched by an explicit call instead.
+PROJECTION_MODEL_ID = "eos1klk"
+PROJECTION_PREDS_SUBDIR = "eos1klk_projection"
+PROJECTION_METHODS = ["pca", "umap", "tsne", "tmap"]
 
-# Precise cytotoxicity focus-group membership (output-column level). A node joins the group when
-# EITHER its OUTPUT-COLUMN name matches TOX_COLUMN_REGEX, OR its model TITLE matches the narrower
-# TOX_TITLE_REGEX. The title rule rescues dedicated cell/organ-tox models whose single output is
-# generically named (e.g. the hERG models eos30gr:activity_80, eos43at:pic50); the narrow title
-# terms deliberately EXCLUDE broad "toxicity" panels (Tox21 nuclear-receptor assays, adverse-drug-
-# reaction organ classes) and metabolic-stability / activity models that only mention toxicity.
-TOX_COLUMN_REGEX = (
-    r"cytotox|hepg2|hepatotox|cardiotox|herg|mitotox|toxicity|\btox\b|tox_|_tox|\bdili\b|dili_|_dili"
-)
-TOX_TITLE_REGEX = r"cytotox|hepg2|hepatotox|cardiotox|herg|\bdili\b"
+# Grid resolution (bins x bins) each projection is reduced to before plotting — a display
+# resolution, not a data filter. 60 keeps a 15-pathogen small-multiples panel (~30x30 mm each)
+# legible without over-resolving past what that panel size can show. Revisable.
+PROJECTION_BINS = 60
 
-# Organisms excluded from the per-organism focus heatmaps. 'Homo sapiens' is a catch-all of
-# unrelated human endpoints (hERG, logP, DILI, permeability), not a meaningful same-organism set;
-# its models still appear in the cytotoxicity group and the global heatmap.
-ORGANISM_EXCLUDE = {"Homo sapiens"}
-
-# Minimum number of models sharing an organism for that organism to get its own focus heatmap
-# (a correlation needs at least two nodes). Display minimum, not a data filter.
-ORGANISM_MIN_MODELS = 2
+# Number of highest-scoring compounds highlighted per pathogen, on top of the silver full-library
+# density background. A user-directed value (not a fitted cutoff): the figure shows each
+# pathogen's top PROJECTION_TOP_N compounds by consensus_score, ranked, rather than a score
+# threshold — so it never needs a threshold sign-off, only a count.
+PROJECTION_TOP_N = 1000

@@ -1,0 +1,396 @@
+model_id,slug,column_name,direction,organism,organism_class,sensitivity,assay_type,selected
+eos18ie,antibiotics-ai-saureus,saureus_inhibition_probability,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos1lb5,mycobacterium-permeability,diff_proba,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
+eos1lb5,mycobacterium-permeability,epr_proba,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
+eos1lb5,mycobacterium-permeability,perm_proba_janardhan,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
+eos1lb5,mycobacterium-permeability,perm_proba_lepori_msm,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
+eos1lb5,mycobacterium-permeability,perm_proba_lepori_mtb,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
+eos1lb5,mycobacterium-permeability,perm_proba_mtbpen,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
+eos1soi,non-growing-antimicrobial,antimicrobial_proba,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos21dr,antimicrobial-activity-abaumannii,chembl_dose_response_0,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos21dr,antimicrobial-activity-abaumannii,chembl_dose_response_1,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos21dr,antimicrobial-activity-abaumannii,chembl_dose_response_2,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos21dr,antimicrobial-activity-abaumannii,chembl_dose_response_3,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos21dr,antimicrobial-activity-abaumannii,chembl_dose_response_4,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos21dr,antimicrobial-activity-abaumannii,chembl_dose_response_5,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos21dr,antimicrobial-activity-abaumannii,chembl_dose_response_6,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos21dr,antimicrobial-activity-abaumannii,chembl_dose_response_7,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos21dr,antimicrobial-activity-abaumannii,chembl_single_point_0,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos21dr,antimicrobial-activity-abaumannii,consensus_score,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos24jm,qcrb-tb,class,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_dose_response_0,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_dose_response_1,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_dose_response_2,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_dose_response_3,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_dose_response_4,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_dose_response_5,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_dose_response_6,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_dose_response_7,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_single_point_0,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_single_point_1,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_single_point_2,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_single_point_3,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_single_point_4,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,chembl_single_point_5,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2e3s,antimicrobial-activity-paeruginosa,consensus_score,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos2gth,maip-malaria-surrogate,maip_score,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos2l0q,schisto-swisstph,adult_ic50,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos2l0q,schisto-swisstph,adult_perc,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos2l0q,schisto-swisstph,adult_perc_33,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos2l0q,schisto-swisstph,nts_ic50,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos2l0q,schisto-swisstph,nts_perc,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos2l0q,schisto-swisstph,nts_perc_10,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos2xeq,antibiotics-downselection,betalactam_motif,higher,,,,structural_alert,No
+eos2xeq,antibiotics-downselection,carbepenem_motif,higher,,,,structural_alert,No
+eos2xeq,antibiotics-downselection,fluoroquinolone_motif,higher,,,,structural_alert,No
+eos2xeq,antibiotics-downselection,has_brenk,higher,,,,structural_alert,No
+eos2xeq,antibiotics-downselection,has_pains,higher,,,,structural_alert,No
+eos2xeq,antibiotics-downselection,is_sim_known_ab,higher,,,,structural_alert,No
+eos2xeq,antibiotics-downselection,nitrofuran_motif,higher,,,,structural_alert,No
+eos3804,chemprop-abaumannii,abaumannii_inhibition_probability,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,cytotoxicity_ic50,higher,Homo sapiens,,,toxicity,No
+eos3dys,coadd-antimicrobial-activity,hemolitic_activity,higher,Homo sapiens,,,toxicity,No
+eos3dys,coadd-antimicrobial-activity,calbicans_ATCC90028_inhib_50,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,calbicans_ATCC90028_mic_25,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,cglabrata_ATCC90030_mic_25,higher,Candida glabrata,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,cdeuterogattii_CBS7750_mic_25,higher,Cryptococcus deuterogattii,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,cneoformans_H99_inhib_50,higher,Cryptococcus neoformans,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,cneoformans_H99_mic_25,higher,Cryptococcus neoformans,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,abaumannii_ATCC19606_inhib_50,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,abaumannii_ATCC19606_mic_25,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,ecoli_ATCC25922_inhib_50,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,ecoli_ATCC25922_mic_25,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,ecoli_lpxC_inhib_50,higher,Escherichia coli,Gram-negative bacteria,sensitized,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,ecoli_tolC_inhib_50,higher,Escherichia coli,Gram-negative bacteria,sensitized,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,kpneumoniae_ATCC700603_inhib_50,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,kpneumoniae_ATCC700603_mic_25,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,paeruginosa_ATCC27853_inhib_50,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,paeruginosa_ATCC27853_mic_25,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,paeruginosa_PAO397_inhib_50,higher,Pseudomonas aeruginosa,Gram-negative bacteria,sensitized,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,paeruginosa_PAO397_mic_25,higher,Pseudomonas aeruginosa,Gram-negative bacteria,sensitized,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,saureus_ATCC43300_inhib_50,higher,Staphylococcus aureus,Gram-positive bacteria,resistant,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,saureus_ATCC43300_mic_25,higher,Staphylococcus aureus,Gram-positive bacteria,resistant,bioactivity,Yes
+eos3lyd,efflux-pump-avoidance-gram-negative,efflux_evader_proba,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
+eos3ujl,mtb-permeability,permeability_probability,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_00,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_01,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_02,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_03,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_04,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_05,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_06,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_07,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_08,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_09,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_10,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_11,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_12,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_13,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_14,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_0,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_1,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_2,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_3,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_4,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_5,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_6,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_7,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_8,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_9,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,consensus_score,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_0,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_1,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid1259417,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid1332,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid1949,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid2842,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid449764,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid492952,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid743175,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos46ev,chemtb,proba_chemtb,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_00,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_01,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_02,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_03,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_04,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_05,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_06,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_07,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_08,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_09,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_10,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_11,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_12,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_13,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_14,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_15,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_16,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_17,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_18,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_19,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_20,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_21,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_22,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_chembl3137666,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_single_point_0,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_single_point_1,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_single_point_2,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_single_point_3,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_single_point_4,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_single_point_5,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,chembl_single_point_6,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,consensus_score,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_0,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_1,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_2,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_3,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_4,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_5,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid1159568,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid1347380,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid1347416,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid1347417,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid1815,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid1876,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid1877,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid1882,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid1883,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid504315,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid504832,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid504834,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid504848,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4an7,antimicrobial-activity-pfalciparum,pubchem_aid504850,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4cxk,image-mol-sars-cov2,3cl,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,ace2,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,alphalisa,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,cov2_cpe,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,cov2_cytotox,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,cov_ppe,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,cov_ppe_cs,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,hek293,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,human,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,mers_ppe,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,mers_ppe_cs,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,tmprss2,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4cxk,image-mol-sars-cov2,truhit,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos4e40,chemprop-antibiotic,inhibition_50um,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos4f95,mycetos,mycetoma_inhibition_probability,higher,Madurella mycetomatis,Fungi,wild-type,bioactivity,Yes
+eos4n4d,gram-negative-accumulation,weighted_accumulation,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
+eos4r1g,entry-classifier,entry_proba,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
+eos4rta,malaria-mmv,ic50_nf54_ldh_72h_1uM,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4rta,malaria-mmv,ic50_nf54_lum_72h_1uM,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4rta,malaria-mmv,perc_nf54_ldh_72h_50,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4rta,malaria-mmv,perc_nf54_lum_72h_50,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos4zfy,maip-malaria,maip_score,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos5bsw,ecoli-retention,retention_proba,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
+eos5cl7,ngonorrhoeae-inhibition,ngonorrhoeae_inhibition_probability,higher,Neisseria gonorrhoeae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_dose_response_0,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_dose_response_1,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_dose_response_2,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_dose_response_3,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_dose_response_4,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_single_point_0,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_single_point_1,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_single_point_2,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_single_point_3,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_single_point_4,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,chembl_single_point_5,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,consensus_score,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5eya,antimicrobial-activity-ecoli,pubchem_aid1053175,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5jv3,mycopermenet,mycomembrane_permeation,lower,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
+eos5nqn,gneprop-ecoli,hts_activity,higher,Escherichia coli,Gram-negative bacteria,sensitized,bioactivity,Yes
+eos5nqn,gneprop-ecoli,tolc_activity,higher,Escherichia coli,Gram-negative bacteria,sensitized,bioactivity,Yes
+eos5q52,antimicrobial-activity-spneumoniae,chembl_dose_response_0,higher,Streptococcus pneumoniae,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos5q52,antimicrobial-activity-spneumoniae,chembl_dose_response_1,higher,Streptococcus pneumoniae,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos5q52,antimicrobial-activity-spneumoniae,chembl_dose_response_2,higher,Streptococcus pneumoniae,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos5q52,antimicrobial-activity-spneumoniae,chembl_dose_response_3,higher,Streptococcus pneumoniae,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos5q52,antimicrobial-activity-spneumoniae,chembl_dose_response_4,higher,Streptococcus pneumoniae,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos5q52,antimicrobial-activity-spneumoniae,chembl_dose_response_5,higher,Streptococcus pneumoniae,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos5q52,antimicrobial-activity-spneumoniae,chembl_dose_response_6,higher,Streptococcus pneumoniae,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos5q52,antimicrobial-activity-spneumoniae,chembl_single_point_0,higher,Streptococcus pneumoniae,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos5q52,antimicrobial-activity-spneumoniae,consensus_score,higher,Streptococcus pneumoniae,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos5qya,antimicrobial-activity-ngonorrhoeae,chembl_dose_response_0,higher,Neisseria gonorrhoeae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos5xng,chemprop-burkholderia,bcenocepacia_inhibition,higher,Burkholderia cenocepacia,Gram-negative bacteria,resistant,bioactivity,No
+eos60mw,cidalsdb,leishmania_chemberta,higher,Leishmania major,Protozoa,wild-type,bioactivity,Yes
+eos60mw,cidalsdb,leishmania_mlp,higher,Leishmania major,Protozoa,wild-type,bioactivity,Yes
+eos60mw,cidalsdb,leishmania_rf,higher,Leishmania major,Protozoa,wild-type,bioactivity,Yes
+eos60mw,cidalsdb,coronavirus_chemberta,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos60mw,cidalsdb,coronavirus_gb,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos60mw,cidalsdb,coronavirus_gcn,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos69jj,neisseria-gonorrhoeae-activity,activity_score,higher,Neisseria gonorrhoeae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6hy3,image-mol-hiv,prob_inh_hiv,higher,HIV,Viruses,wild-type,bioactivity,No
+eos6m2k,mole-antimicrobial,apscore_total,higher,,,,class_prediction,No
+eos6m2k,mole-antimicrobial,apscore_gnegative,higher,,Gram-negative bacteria,,class_prediction,No
+eos6m2k,mole-antimicrobial,akkermansia_muciniphila_nt5021,higher,Akkermansia muciniphila,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,bacteroides_caccae_nt5050,higher,Bacteroides caccae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,bacteroides_fragilis_et_nt5033,higher,Bacteroides fragilis,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,bacteroides_fragilis_nt_nt5003,higher,Bacteroides fragilis,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,bacteroides_ovatus_nt5054,higher,Bacteroides ovatus,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,bacteroides_thetaiotaomicron_nt5004,higher,Bacteroides thetaiotaomicron,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,bacteroides_uniformis_nt5002,higher,Bacteroides uniformis,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,bacteroides_vulgatus_nt5001,higher,Bacteroides vulgatus,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,bacteroides_xylanisolvens_nt5064,higher,Bacteroides xylanisolvens,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,bilophila_wadsworthia_nt5036,higher,Bilophila wadsworthia,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,escherichia_coli_ed1a_nt5078,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,escherichia_coli_iai1_nt5077,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,fusobacterium_nucleatum_nt5025,higher,Fusobacterium nucleatum,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,odoribacter_splanchnicus_nt5081,higher,Odoribacter splanchnicus,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,parabacteroides_distasonis_nt5074,higher,Parabacteroides distasonis,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,parabacteroides_merdae_nt5071,higher,Parabacteroides merdae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,prevotella_copri_nt5019,higher,Prevotella copri,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,veillonella_parvula_nt5017,higher,Veillonella parvula,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,apscore_gpositive,higher,,Gram-positive bacteria,,class_prediction,No
+eos6m2k,mole-antimicrobial,bifidobacterium_adolescentis_nt5022,higher,Bifidobacterium adolescentis,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,bifidobacterium_longum_nt5028,higher,Bifidobacterium longum,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,blautia_obeum_nt5069,higher,Blautia obeum,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,clostridium_bolteae_nt5026,higher,Clostridium bolteae,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,clostridium_difficile_nt5083,higher,Clostridium difficile,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,clostridium_perfringens_nt5032,higher,Clostridium perfringens,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,clostridium_ramosum_nt5006,higher,Clostridium ramosum,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,clostridium_saccharolyticum_nt5037,higher,Clostridium saccharolyticum,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,collinsella_aerofaciens_nt5073,higher,Collinsella aerofaciens,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,coprococcus_comes_nt5048,higher,Coprococcus comes,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,dorea_formicigenerans_nt5076,higher,Dorea formicigenerans,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,eggerthella_lenta_nt5024,higher,Eggerthella lenta,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,eubacterium_eligens_nt5075,higher,Eubacterium eligens,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,eubacterium_rectale_nt5009,higher,Eubacterium rectale,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,lactobacillus_paracasei_nt5042,higher,Lactobacillus paracasei,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,roseburia_hominis_nt5079,higher,Roseburia hominis,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,roseburia_intestinalis_nt5011,higher,Roseburia intestinalis,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,ruminococcus_bromii_nt5045,higher,Ruminococcus bromii,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,ruminococcus_gnavus_nt5046,higher,Ruminococcus gnavus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,ruminococcus_torques_nt5047,higher,Ruminococcus torques,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,streptococcus_parasanguinis_nt5072,higher,Streptococcus parasanguinis,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6m2k,mole-antimicrobial,streptococcus_salivarius_nt5038,higher,Streptococcus salivarius,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,chembl_dose_response_0,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,chembl_dose_response_1,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,chembl_dose_response_2,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,chembl_dose_response_3,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,chembl_dose_response_4,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,chembl_single_point_0,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,chembl_single_point_1,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,chembl_single_point_2,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,chembl_single_point_3,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,chembl_single_point_4,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos6wb7,antimicrobial-activity-kpneumoniae,consensus_score,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos74km,antimicrobial-kg-ml,inactive,higher,,,,class_prediction,No
+eos74km,antimicrobial-kg-ml,fungi,higher,,Fungi,,class_prediction,No
+eos74km,antimicrobial-kg-ml,gram_negative,higher,,Gram-negative bacteria,,class_prediction,No
+eos74km,antimicrobial-kg-ml,gram_positive,higher,,Gram-positive bacteria,,class_prediction,No
+eos74km,antimicrobial-kg-ml,acid_fast,higher,,Mycobacteria (acid-fast),,class_prediction,No
+eos7iak,antimicrobial-activity-campylobacter,chembl_dose_response_0,higher,Campylobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos7ike,entry-rules,glob,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
+eos7ike,entry-rules,primary_amine,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
+eos7ike,entry-rules,rb,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
+eos7kpb,h3d-virtual-screening-cascade-light,aq_sol,higher,,,,physicochemical,No
+eos7kpb,h3d-virtual-screening-cascade-light,aq_sol_norm,higher,,,,physicochemical,No
+eos7kpb,h3d-virtual-screening-cascade-light,caco_2,higher,Homo sapiens,,,permeability,No
+eos7kpb,h3d-virtual-screening-cascade-light,caco_2_norm,higher,Homo sapiens,,,permeability,No
+eos7kpb,h3d-virtual-screening-cascade-light,cho,higher,Homo sapiens,,,toxicity,No
+eos7kpb,h3d-virtual-screening-cascade-light,cho_norm,higher,Homo sapiens,,,toxicity,No
+eos7kpb,h3d-virtual-screening-cascade-light,clint_h,higher,Homo sapiens,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,clint_h_norm,higher,Homo sapiens,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,cyp2c19,higher,Homo sapiens,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,cyp2c19_norm,higher,Homo sapiens,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,cyp2c9,higher,Homo sapiens,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,cyp2c9_norm,higher,Homo sapiens,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,cyp2d6,higher,Homo sapiens,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,cyp2d6_norm,higher,Homo sapiens,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,cyp3a4,higher,Homo sapiens,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,cyp3a4_norm,higher,Homo sapiens,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,hepg2,higher,Homo sapiens,,,toxicity,No
+eos7kpb,h3d-virtual-screening-cascade-light,hepg2_norm,higher,Homo sapiens,,,toxicity,No
+eos7kpb,h3d-virtual-screening-cascade-light,clint_m,higher,Mus musculus,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,clint_m_norm,higher,Mus musculus,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,clint_r,higher,Rattus norvegicus,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,clint_r_norm,higher,Rattus norvegicus,,,ADME,No
+eos7kpb,h3d-virtual-screening-cascade-light,mtb,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos7kpb,h3d-virtual-screening-cascade-light,mtb_norm,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos7kpb,h3d-virtual-screening-cascade-light,pf_k1,higher,Plasmodium falciparum,Protozoa,resistant,bioactivity,Yes
+eos7kpb,h3d-virtual-screening-cascade-light,pf_k1_norm,higher,Plasmodium falciparum,Protozoa,resistant,bioactivity,No
+eos7kpb,h3d-virtual-screening-cascade-light,pf_nf54,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos7kpb,h3d-virtual-screening-cascade-light,pf_nf54_norm,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,No
+eos7l5m,efflux-gram-negative,effluxed_proba,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
+eos7l5m,efflux-gram-negative,pumped_proba,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
+eos7yti,osm-series4,ic50_1um,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos7yti,osm-series4,ic50_2point5um,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos80ch,malaria-mam,asexual_blood_stage,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos80ch,malaria-mam,sexual_stage,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
+eos81zy,antimicrobial-activity-efaecium,chembl_dose_response_0,higher,Enterococcus faecium,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos81zy,antimicrobial-activity-efaecium,chembl_dose_response_1,higher,Enterococcus faecium,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos81zy,antimicrobial-activity-efaecium,chembl_dose_response_2,higher,Enterococcus faecium,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos81zy,antimicrobial-activity-efaecium,chembl_dose_response_3,higher,Enterococcus faecium,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos81zy,antimicrobial-activity-efaecium,chembl_dose_response_4,higher,Enterococcus faecium,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos81zy,antimicrobial-activity-efaecium,chembl_dose_response_5,higher,Enterococcus faecium,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos81zy,antimicrobial-activity-efaecium,chembl_dose_response_6,higher,Enterococcus faecium,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos81zy,antimicrobial-activity-efaecium,chembl_single_point_0,higher,Enterococcus faecium,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos81zy,antimicrobial-activity-efaecium,consensus_score,higher,Enterococcus faecium,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8d8a,mycpermcheck,mycpermcheck,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
+eos8fth,redial-2020,3cl,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8fth,redial-2020,ace2,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8fth,redial-2020,alphalisa,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8fth,redial-2020,cov1_ppe,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8fth,redial-2020,cov1_ppe_cs,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8fth,redial-2020,cpe,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8fth,redial-2020,cytotox,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8fth,redial-2020,hcytox,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8fth,redial-2020,mers_ppe,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8fth,redial-2020,mers_ppe_cs,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8fth,redial-2020,truhit,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos8jx6,antimicrobial-activity-calbicans,chembl_dose_response_0,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_dose_response_1,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_dose_response_2,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_dose_response_3,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_dose_response_4,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_dose_response_5,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_dose_response_6,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_dose_response_7,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_dose_response_8,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_dose_response_9,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_single_point_0,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_single_point_1,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_single_point_2,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_single_point_3,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,chembl_single_point_4,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,consensus_score,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,pubchem_0,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8jx6,antimicrobial-activity-calbicans,pubchem_aid1242,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_dose_response_0,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_dose_response_1,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_dose_response_2,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_dose_response_3,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_dose_response_4,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_dose_response_5,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_dose_response_6,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_dose_response_7,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_single_point_0,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_single_point_1,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_single_point_2,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_single_point_3,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_single_point_4,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_single_point_5,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,chembl_single_point_6,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,consensus_score,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,pubchem_0,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,pubchem_aid1014,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lcw,antimicrobial-activity-saureus,pubchem_aid463173,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos8lok,s2dv-hbv,hbv_prob,higher,Hepatitis B virus,Viruses,wild-type,bioactivity,No
+eos8v1a,antimicrobial-activity-smansoni,chembl_dose_response_0,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos8v1a,antimicrobial-activity-smansoni,chembl_single_point_0,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos8v1a,antimicrobial-activity-smansoni,chembl_single_point_1,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos8v1a,antimicrobial-activity-smansoni,chembl_single_point_2,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos8v1a,antimicrobial-activity-smansoni,consensus_score,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_0,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_1,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_2,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_3,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,chembl_single_point_0,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,consensus_score,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9eyo,antimicrobial-activity-hpylori,chembl_dose_response_0,higher,Helicobacter pylori,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9f6t,chemprop-sars-cov-inhibition,activity,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
+eos9f7c,paeruginosa-permeation,permeability_proba,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,permeability,No
+eos9ivc,anti-mtb-seattle,mic50_10um,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos9ivc,anti-mtb-seattle,mic90_10um,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos9ivc,anti-mtb-seattle,wcs_70percent,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos9n1s,hemozoin-inhibition-physchem,tmm_proba,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,No
+eos9x3z,gram-negative-permeability-proxy,gn_activity,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No

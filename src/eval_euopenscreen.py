@@ -9,8 +9,6 @@ pre-aggregated summary CSVs into ``output/05_euopenscreen_validation/`` that the
 Analyses:
   1. Own primary assay — each of the 7 organisms with an EU OpenScreen primary assay, scored by
      its own model (AUROC/AUPRC/BEDROC/EF + ROC curves).
-  1b. Own secondary assay — the same models scored on the merged secondary (confirmatory /
-     dose-response) assays, for a primary-vs-secondary comparison.
   3. Shared vs exclusive hits — precomputed EU OpenScreen exclusivity subsets.
   4. Cross-organism — every model x every EU OpenScreen assay (off-diagonal = a model predicting
      a DIFFERENT organism's data) + per-model specificity index.
@@ -57,8 +55,35 @@ from eval_common import (
 def load_euos_primary(euos_root, code, assay_id):
     """EU OpenScreen primary-assay labels as DataFrame[smiles, bin, inchikey].
 
-    Reads ``02_binarised_assays/{assay_id}.csv`` (smiles, bin), enriches inchikey from
-    ``02_merged/02_{code}.csv``, and keeps only conclusive rows (bin in {0, 1}).
+    ONE ROW PER COMPOUND. Reads ``02_binarised_assays/{assay_id}.csv`` (smiles, bin), keeps only
+    conclusive rows (bin in {0, 1}), collapses duplicate SMILES keeping the HIGHEST bin, and enriches
+    inchikey from ``02_merged/02_{code}.csv``.
+
+    **Why the primary assay and not ``02_merged``.** ``02_merged/02_{code}.csv`` is the union of ALL
+    5-6 live EU OpenScreen assays for the pathogen, not its primary screen. The non-primary ones are small
+    (~5,300 compounds against ~101,000) but hit-ENRICHED 12x to 60x, because they include academic
+    compound batches and dose-response confirmation sets that run >50% active. Pooling them multiplies
+    the active count by 1.4x-3.5x and destroys the ~1e-4 prevalence that AUROC, BEDROC and EF@k are
+    read against. The primary assay is the only uniformly screened, unbiased set, so it is the source
+    of truth for "did this compound inhibit this organism". ``02_merged`` is used here ONLY for the
+    InChIKey lookup (it is a superset of every primary assay's SMILES, so the join is complete), and
+    elsewhere only as ``02_only_smiles.csv``, the step-04 prediction input.
+
+    **Why the de-duplication.** The per-assay file is MEASUREMENT-level: one row per assay well. The
+    EU OpenScreen library registers some structures more than once as separate compounds, so those
+    appear as repeated SMILES. Left alone they are counted twice in ``n_eval``/``n_active`` and carry
+    double weight in every metric, and they made this loader disagree with the compound-level
+    exclusivity subsets in ``06_subset_data/exclusivity/`` by up to one active per organism.
+
+    The rule is **max bin, "Active prevails"** — deliberately the same rule upstream applies in
+    ``eu-openscreen-antimicrobial-tasks/scripts/02_binarise_and_merge.py::merge_pathogen_rows`` when
+    it builds ``02_merged``. Upstream simply does not apply it to the per-assay files. Keeping the
+    rules identical is the point: the two repos must not resolve the same conflict differently.
+
+    It matters for real data, not just for counting. *A. baumannii* has a DISCORDANT pair — two
+    separately registered library compounds, EOS101879 (93.05, active) and EOS17004 (11.03,
+    inactive), with the same structure and InChIKey. That is a replicate disagreement, and this rule
+    resolves it to active. Before this, it was resolved by whichever row happened to come first.
     """
     path = os.path.join(euos_root, "02_binarised_assays", f"{assay_id}.csv")
     if not os.path.exists(path):
@@ -66,32 +91,26 @@ def load_euos_primary(euos_root, code, assay_id):
         return None
     labels = pd.read_csv(path)
     labels = labels[labels["bin"].isin([0, 1])].copy()
+    # Collapse measurement rows to compounds. Logged rather than silent: if upstream ever starts
+    # shipping compound-level per-assay files this count goes to zero, and if the library grows new
+    # duplicate registrations it goes up — either way the change should be visible in the run log.
+    n_before = len(labels)
+    # Counted BEFORE collapsing, while both rows of a conflicting pair are still present.
+    n_disc = int(labels.groupby("smiles")["bin"].nunique().gt(1).sum())
+    labels = (labels.sort_values("bin", ascending=False)
+                    .drop_duplicates("smiles", keep="first"))
+    n_collapsed = n_before - len(labels)
+    if n_collapsed:
+        disc_note = f", {n_disc} discordant (resolved active)" if n_disc else ""
+        print(f"  [dedup] {assay_id}: collapsed {n_collapsed} duplicate label row(s) to "
+              f"{len(labels)} compounds{disc_note}")
     merged_path = os.path.join(euos_root, "02_merged", f"02_{code}.csv")
     if os.path.exists(merged_path):
-        inchi = pd.read_csv(merged_path, usecols=["smiles", "inchikey"])
+        inchi = pd.read_csv(merged_path, usecols=["smiles", "inchikey"]).drop_duplicates("smiles")
         labels = labels.merge(inchi, on="smiles", how="left")
     else:
         labels["inchikey"] = np.nan
     return labels[["smiles", "bin", "inchikey"]]
-
-
-def load_euos_secondary(euos_root, code):
-    """EU OpenScreen secondary-assay labels as DataFrame[smiles, bin, inchikey].
-
-    Reads ``06_subset_data/secondary/{code}_secondary.csv`` — the upstream merge of every
-    non-primary assay for the organism (academic sub-screens + dose-response/IC50),
-    deduplicated active-prevails. Already carries smiles/inchikey/bin, so no enrichment merge
-    is needed; keeps only conclusive rows (bin in {0, 1}).
-    """
-    path = os.path.join(euos_root, "06_subset_data", "secondary", f"{code}_secondary.csv")
-    if not os.path.exists(path):
-        print(f"  [skip] secondary {code}_secondary.csv not found")
-        return None
-    df = pd.read_csv(path)
-    df = df[df["bin"].isin([0, 1])].copy()
-    if "inchikey" not in df.columns:
-        df["inchikey"] = np.nan
-    return df[["smiles", "bin", "inchikey"]]
 
 
 # --------------------------------------------------------------------------- #
@@ -144,7 +163,8 @@ def _roc_records(pred, labels, train_keys, pathogen, code):
 def run_euopenscreen(pred_dir, euos_root, config, train_cache):
     """Analyses 1 (own-assay), 3 (exclusivity) and 4 (cross-organism) for EU OpenScreen.
 
-    Returns (own_records, exclusivity_records, cross_records, roc_records). ``config`` is the
+    Returns (own_records, exclusivity_records, cross_records, roc_records,
+    exclusivity_pct_records). ``config`` is the
     pathogen table (pathogen, code, eosid); ``train_cache`` is a {code: set|None} of keys.
     """
     primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
@@ -162,6 +182,7 @@ def run_euopenscreen(pred_dir, euos_root, config, train_cache):
             assays[code] = lab
 
     own_records, cross_records, exclusivity_records, roc_records = [], [], [], []
+    exclusivity_pct_records = []
 
     for _, row in config.iterrows():
         code, eosid, pathogen = row["code"], row["eosid"], row["pathogen"]
@@ -193,8 +214,71 @@ def run_euopenscreen(pred_dir, euos_root, config, train_cache):
                     continue
                 base = {"pathogen": pathogen, "code": code, "eosid": eosid, "subset": mode}
                 exclusivity_records.extend(evaluate(pred, sub, train_keys, base))
+                exclusivity_pct_records.extend(
+                    _exclusivity_percentiles(pred, sub, train_keys, base))
 
-    return own_records, exclusivity_records, cross_records, roc_records
+    return (own_records, exclusivity_records, cross_records, roc_records,
+            exclusivity_pct_records)
+
+
+def _exclusivity_percentiles(pred, labels, train_keys, base):
+    """Where each active lands in the model's own ranking, as a percentile in [0, 1].
+
+    The exclusivity AUROC says how well a model separates one subset of hits from the primary
+    inactives, but a single number cannot show *how*: whether the hits pile up at the top, or
+    whether a good score is a handful of hits at the very top dragging a long tail. This exports
+    the distribution behind the number, one row per active, for the event-plot panel.
+
+    Percentile is the active's rank among ALL evaluated compounds (its subset's actives plus the
+    same primary inactives the AUROC uses), so 1.0 = top-scoring compound in the library and 0.5 =
+    the middle. Ties take the average rank, matching how AUROC treats them.
+
+    The two are the same quantity: with 1-based ranks,
+    ``AUROC = (mean_rank_pos - (n_pos + 1) / 2) / n_neg``, so the mean of these percentiles is
+    ``(auroc * n_neg + (n_pos + 1) / 2) / n``. At this prevalence (~1e-4) that is the AUROC to
+    four decimal places. :func:`_check_percentiles_match_auroc` asserts the exact identity — the
+    ridge's centre of mass IS the bar it replaces, and the export is wrong if it is not.
+    """
+    rows = []
+    for set_name, sub in merged_variants(pred, labels, train_keys):
+        if sub["bin"].nunique() < 2:
+            continue
+        pct = sub["score"].rank(pct=True, method="average")
+        active = sub["bin"].values == 1
+        for key, smi, p in zip(sub.loc[active, "inchikey"], sub.loc[active, "smiles"],
+                               pct.values[active]):
+            rows.append({**base, "set": set_name, "inchikey": key, "smiles": smi,
+                         "percentile": float(p)})
+    return rows
+
+
+def _check_percentiles_match_auroc(pct_df, excl_df, tol=1e-4):
+    """Assert the exported percentiles reproduce the AUROC they are meant to unpack.
+
+    Guards the export against a silent mis-join: a percentile taken over the wrong compound set,
+    or actives matched to the wrong subset, would still look like a plausible distribution but
+    would no longer integrate to the published AUROC. Reports the worst deviation.
+
+    ``tol`` cannot go below 1e-4. ``metrics.compute_metrics`` stores ``round(auroc, 4)``, so the
+    comparison is against a value already quantised to 1e-4 and a deviation of up to 5e-5 is the
+    rounding, not a defect — measured worst case is 4.86e-05. Tightening this further would fail
+    on correct data; catching a real mis-join does not need more resolution than this, since a
+    wrong compound set moves the mean percentile by orders of magnitude more.
+    """
+    if pct_df.empty or excl_df.empty:
+        return None
+    keys = ["pathogen", "code", "subset", "set"]
+    obs = pct_df.groupby(keys)["percentile"].agg(["mean", "size"]).reset_index()
+    ref = excl_df[keys + ["auroc", "n_eval", "n_active"]]
+    both = obs.merge(ref, on=keys, how="inner")
+    n_neg = both["n_eval"] - both["n_active"]
+    expected = (both["auroc"] * n_neg + (both["n_active"] + 1) / 2) / both["n_eval"]
+    worst = float((both["mean"] - expected).abs().max())
+    if worst > tol:
+        raise AssertionError(
+            f"exclusivity percentiles do not reproduce the AUROC (worst deviation {worst:.2e} "
+            f"> {tol:.0e}); the export is joined to the wrong compound set")
+    return worst
 
 
 def _load_exclusivity_task(euos_root, code, mode, inactives):
@@ -215,29 +299,6 @@ def _load_exclusivity_task(euos_root, code, mode, inactives):
     inactives = inactives[[c for c in cols if c in inactives.columns]]
     actives = actives[[c for c in cols if c in actives.columns]]
     return pd.concat([actives, inactives], ignore_index=True)
-
-
-def run_secondary(pred_dir, euos_root, config, train_cache):
-    """Analysis 1b — each shared model on its EU OpenScreen SECONDARY (confirmatory) assays.
-
-    Own-assay evaluation exactly like analysis 1 but against the merged secondary labels
-    (:func:`load_euos_secondary`). Returns a list of metric records (raw + dedup) with the same
-    schema as the primary own-assay records, for a primary-vs-secondary comparison.
-    """
-    records = []
-    for _, row in config.iterrows():
-        code, eosid, pathogen = row["code"], row["eosid"], row["pathogen"]
-        if code not in SHARED_ORGANISMS:
-            continue
-        lab = load_euos_secondary(euos_root, code)
-        if lab is None:
-            continue
-        pred = load_predictions(pred_dir, "euopenscreen", eosid)
-        if pred is None:
-            continue
-        base = {"pathogen": pathogen, "code": code, "eosid": eosid}
-        records.extend(evaluate(pred, lab, train_cache.get(code), base))
-    return records
 
 
 def run_individual_performance(pred_dir, euos_root, config, train_cache):
@@ -359,12 +420,25 @@ def build_leakage_report(config, euos_root, train_cache):
 
 
 def run_active_overlap(euos_root, config):
-    """Pairwise active-compound overlap (Jaccard) between the 7 EU OpenScreen primary assays.
+    """Pairwise active-compound overlap between the 7 EU OpenScreen primary assays.
 
     Label-only (no model): the interpretive backdrop for the cross-organism AUROCs — a compound
     active against one organism is often active against others, so high off-diagonal AUROC need
     not mean cross-organism prediction. Returns long-form rows
-    (code_a, pathogen_a, code_b, pathogen_b, n_a, n_b, n_intersect, jaccard).
+    (code_a, pathogen_a, code_b, pathogen_b, n_a, n_b, n_intersect, jaccard, containment).
+
+    Two measures, because the active sets are very unequal in size (14 for P. aeruginosa vs 378
+    for S. aureus) and they answer different questions:
+
+    ``jaccard``     |A ∩ B| / |A ∪ B| — symmetric, but dominated by the larger set: P. aeruginosa
+                    shares 13 of its 14 actives with A. baumannii and still scores only 0.22.
+    ``containment`` |A ∩ B| / |A| — DIRECTIONAL: the share of row organism A's actives that are
+                    also active against column organism B. The matrix is therefore NOT symmetric
+                    (paeruginosa→abaumannii = 0.93, abaumannii→paeruginosa = 0.23), and the
+                    diagonal is 1 by construction.
+
+    Compounds are matched on the raw SMILES string (consistent with :func:`run_hit_promiscuity`;
+    the leakage report matches on InChIKey instead).
     """
     primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
     code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
@@ -389,6 +463,7 @@ def run_active_overlap(euos_root, config):
                 "n_a": len(actives[a]), "n_b": len(actives[b]),
                 "n_intersect": inter,
                 "jaccard": round(inter / union, 4) if union else 0.0,
+                "containment": round(inter / len(actives[a]), 4) if actives[a] else 0.0,
             })
     return rows
 
@@ -581,7 +656,12 @@ def _consensus_scores_with_hit_counts(pred_dir, euos_root, config, agg, normaliz
         lab = load_euos_primary(euos_root, code, assay_id) if assay_id else None
         if lab is None:
             continue
-        lab = lab.drop_duplicates("smiles").set_index("smiles")["bin"]
+        # `load_euos_primary` already returns one row per compound, resolved by max bin. This used to
+        # carry its own `drop_duplicates(keep="first")` — a SECOND, row-order-dependent rule that
+        # agreed with the first only by luck (the active row precedes the inactive one in the
+        # A. baumannii file). No guard is needed in its place: the `reindex` below raises outright on
+        # a duplicate index, so a regression in the loader fails loudly instead of double-counting.
+        lab = lab.set_index("smiles")["bin"]
         aligned = lab.reindex(score.index)
         n_tested += aligned.notna().astype(int)
         n_active += (aligned == 1).astype(int)
@@ -635,7 +715,8 @@ def _active_rows(df, score_col):
     ].round({score_col: 4}).to_dict("records")
 
 
-def run_consensus_sum_by_hit_class(pred_dir, euos_root, config):
+def run_consensus_sum_by_hit_class(pred_dir, euos_root, config,
+                                   train_keys=None, smiles_to_key=None):
     """Summed consensus score across the 7 pathogen models, split by EU OpenScreen hit class.
 
     Each compound's 7 model scores are summed (one score in [0, 7]) and the compound is assigned
@@ -648,14 +729,23 @@ def run_consensus_sum_by_hit_class(pred_dir, euos_root, config):
       - ``narrow``    — a hit in 2-3 primary assays.
       - ``broad``     — a hit in more than 3 primary assays (4-7), i.e. broad-spectrum.
 
-    The last two are the split of the "shared" (non-exclusive) hits used by analysis 3. No leakage
-    filtering (see :func:`_consensus_scores_with_hit_counts`), so this describes the score
-    distribution, not out-of-sample performance.
+    The last two are the split of the "shared" (non-exclusive) hits used by analysis 3. Leakage
+    filtering is opt-in, exactly as for :func:`run_consensus_max_by_activity`: pass ``train_keys``
+    + ``smiles_to_key`` to drop every compound in ANY of the 7 models' ChEMBL training sets, from
+    all four classes alike. Omit them for the raw variant, which deliberately keeps training-set
+    compounds and so describes the score distribution rather than out-of-sample performance.
+
+    Note the dedup twin's class balance is NOT the raw one rescaled: leakage rises steeply with
+    promiscuity (17% of exclusive hits are in a training set — 68 of 390 — against 40% of narrow,
+    61 of 153, and 69% of broad, 31 of 45), so the broad class thins out far more than the
+    exclusive one.
 
     Returns (stat_rows, active_rows): the per-class box statistics the figure reads, and the
     per-compound summed score for the three active classes.
     """
-    df, unlabelled = _consensus_scores_with_hit_counts(pred_dir, euos_root, config, agg="sum")
+    df, unlabelled = _consensus_scores_with_hit_counts(
+        pred_dir, euos_root, config, agg="sum",
+        train_keys=train_keys, smiles_to_key=smiles_to_key)
     if df is None:
         return [], []
     df = df.rename(columns={"score": "consensus_sum"})
@@ -665,7 +755,8 @@ def run_consensus_sum_by_hit_class(pred_dir, euos_root, config):
          df["n_pathogens"] == 1],
         ["broad", "narrow", "exclusive"], default="inactive")
     return (_class_box_stats(df, HIT_CLASSES, "consensus_sum", unlabelled,
-                             len(SHARED_ORGANISMS), score_scale="raw"),
+                             len(SHARED_ORGANISMS), score_scale="raw",
+                             leakage="dedup" if train_keys else "raw"),
             _active_rows(df, "consensus_sum"))
 
 
@@ -696,8 +787,9 @@ def run_consensus_max_by_activity(pred_dir, euos_root, config, normalize=False,
     the raw variant, which deliberately keeps training-set compounds. The ``leakage`` column of the
     returned stats records which was used.
 
-    Returns (stat_rows, active_rows): the per-class box statistics the figure reads, and the
-    per-compound maximum score for the active class (which keeps its ``n_pathogens`` count).
+    Returns (stat_rows, active_rows, roc_rows): the per-class box statistics the figure reads, the
+    per-compound maximum score for the active class (which keeps its ``n_pathogens`` count), and
+    the thinned ROC curve of active-vs-inactive under this score.
     """
     df, unlabelled = _consensus_scores_with_hit_counts(
         pred_dir, euos_root, config, agg="max", normalize=normalize, rerank=normalize,
@@ -707,10 +799,42 @@ def run_consensus_max_by_activity(pred_dir, euos_root, config, normalize=False,
     df = df.rename(columns={"score": "consensus_max"})
     df["hit_class"] = np.where(df["n_pathogens"] >= 1, "active", "inactive")
     scale = "percentile_reranked" if normalize else "raw"
-    return (_class_box_stats(df, ACTIVITY_CLASSES, "consensus_max", unlabelled,
+    stats = _class_box_stats(df, ACTIVITY_CLASSES, "consensus_max", unlabelled,
                              len(SHARED_ORGANISMS), score_scale=scale,
-                             leakage="dedup" if train_keys else "raw"),
-            _active_rows(df, "consensus_max"))
+                             leakage="dedup" if train_keys else "raw")
+
+    # Separation as ONE number, on every stats row so the figure can annotate it without a join.
+    #
+    # It has to be computed here and cannot be recovered downstream. The obvious shortcut — AUROC
+    # is the mean rank percentile of the positives — does NOT hold for this score, because the
+    # percentile is ranked over the whole scored library while the AUROC is over the smaller
+    # evaluated subset (unlabelled compounds removed, then training-set compounds removed). The two
+    # sets differ non-randomly: dedup preferentially drops high scorers, since promiscuous hits are
+    # the ones ChEMBL trained on. Deriving it from the shipped actives that way gives 0.7511 against
+    # a true 0.7574. The inactive scores are never shipped per-molecule (~10^5 rows), so this column
+    # is the only route to the number.
+    y = (df["hit_class"] == "active").to_numpy(dtype=int)
+    score = df["consensus_max"].to_numpy()
+    two_class = 0 < y.sum() < len(y)
+    auroc = round(float(roc_auc_score(y, score)), 4) if two_class else np.nan
+    for row in stats:
+        row["auroc"] = auroc
+
+    # The curve behind that number. Same construction as the per-organism ROCs
+    # (:func:`_roc_records`): sklearn's compact staircase, then :func:`_thin_curve` to cap the
+    # vertex count while keeping every TPR jump, so the shape survives at ~10^5 negatives against
+    # a few hundred positives. Computed here for the same reason the AUROC is — the inactive
+    # scores never leave this function.
+    roc_rows = []
+    if two_class:
+        fpr, tpr, _ = roc_curve(y, score)
+        fpr, tpr = _thin_curve(fpr, tpr)
+        n_pos, n_neg = int(y.sum()), int((y == 0).sum())
+        roc_rows = [{"score_scale": scale, "leakage": "dedup" if train_keys else "raw",
+                     "fpr": round(float(x), 5), "tpr": round(float(t), 5),
+                     "n_pos": n_pos, "n_neg": n_neg, "auroc": auroc}
+                    for x, t in zip(fpr, tpr)]
+    return stats, _active_rows(df, "consensus_max"), roc_rows
 
 
 def run_exclusive_hit_model_rank(pred_dir, euos_root, config, train_keys=None,
@@ -886,9 +1010,7 @@ def run_all(pred_dir, euos_root, models_root, config_path, output_dir):
               f"{os.path.join(models_root, 'output', '07_datasets')} — reporting RAW only")
 
     print("[EU OpenScreen] evaluating own-assay, exclusivity and cross-organism ...")
-    own, excl, cross, roc = run_euopenscreen(pred_dir, euos_root, config, train_cache)
-    print("[EU OpenScreen] evaluating secondary (confirmatory) assays ...")
-    sec = run_secondary(pred_dir, euos_root, config, train_cache)
+    own, excl, cross, roc, excl_pct = run_euopenscreen(pred_dir, euos_root, config, train_cache)
     print("[EU OpenScreen] active-set overlap ...")
     overlap = run_active_overlap(euos_root, config)
     print("[EU OpenScreen] hit promiscuity (actives shared across pathogens) ...")
@@ -896,10 +1018,11 @@ def run_all(pred_dir, euos_root, models_root, config_path, output_dir):
     print("[EU OpenScreen] summed consensus score by hit class ...")
     sum_stats, sum_actives = run_consensus_sum_by_hit_class(pred_dir, euos_root, config)
     print("[EU OpenScreen] maximum consensus score, active vs inactive ...")
-    max_stats, max_actives = run_consensus_max_by_activity(pred_dir, euos_root, config)
+    max_stats, max_actives, max_roc = run_consensus_max_by_activity(
+        pred_dir, euos_root, config)
     print("[EU OpenScreen] maximum within-model percentile, active vs inactive ...")
-    maxp_stats, maxp_actives = run_consensus_max_by_activity(pred_dir, euos_root, config,
-                                                            normalize=True)
+    maxp_stats, maxp_actives, maxp_roc = run_consensus_max_by_activity(
+        pred_dir, euos_root, config, normalize=True)
     print("[EU OpenScreen] own-model rank for exclusive hits ...")
     rank_dist, rank_compounds = run_exclusive_hit_model_rank(pred_dir, euos_root, config)
 
@@ -908,17 +1031,26 @@ def run_all(pred_dir, euos_root, models_root, config_path, output_dir):
     print("[EU OpenScreen] leakage-filtered (dedup) twins ...")
     shared_train = shared_training_inchikeys(models_root)
     key_map = euos_inchikeys(euos_root, config) if shared_train else None
-    maxd_stats, maxd_actives, rankd_dist, rankd_compounds = [], [], [], []
+    maxd_stats, maxd_actives, maxd_roc = [], [], []
+    sumd_stats, sumd_actives = [], []
+    rankd_dist, rankd_compounds = [], []
     if shared_train:
-        maxd_stats, maxd_actives = run_consensus_max_by_activity(
+        sumd_stats, sumd_actives = run_consensus_sum_by_hit_class(
+            pred_dir, euos_root, config, train_keys=shared_train, smiles_to_key=key_map)
+        maxd_stats, maxd_actives, maxd_roc = run_consensus_max_by_activity(
             pred_dir, euos_root, config, normalize=True,
             train_keys=shared_train, smiles_to_key=key_map)
         rankd_dist, rankd_compounds = run_exclusive_hit_model_rank(
             pred_dir, euos_root, config, train_keys=shared_train, smiles_to_key=key_map)
 
     own_df = pd.DataFrame(own)
-    sec_df = pd.DataFrame(sec)
     excl_df = pd.DataFrame(excl)
+    excl_pct_df = pd.DataFrame(excl_pct)
+    # The exported distribution must integrate back to the published AUROC — see the function.
+    worst = _check_percentiles_match_auroc(excl_pct_df, excl_df)
+    if worst is not None:
+        print(f"[EU OpenScreen] exclusivity percentiles reproduce AUROC to {worst:.2e} "
+              f"({len(excl_pct_df)} actives)")
     cross_df = pd.DataFrame(cross)
     roc_df = pd.DataFrame(roc)
     spec_df = build_specificity_index(cross_df)
@@ -940,9 +1072,9 @@ def run_all(pred_dir, euos_root, models_root, config_path, output_dir):
     }
     split_outputs = {                              # both variants, filtered per folder
         "05_euopenscreen_auroc.csv": own_df,
-        "05_euopenscreen_secondary_auroc.csv": sec_df,
         "05_euopenscreen_roc.csv": roc_df,
         "05_hit_exclusivity.csv": excl_df,
+        "05_hit_exclusivity_percentiles.csv": excl_pct_df,
         "05_cross_organism_euos.csv": cross_df,
     }
     full_outputs = {
@@ -952,13 +1084,18 @@ def run_all(pred_dir, euos_root, models_root, config_path, output_dir):
         "05_consensus_max_actives.csv": pd.DataFrame(max_actives),
         "05_consensus_max_percentile_boxstats.csv": pd.DataFrame(maxp_stats),
         "05_consensus_max_percentile_actives.csv": pd.DataFrame(maxp_actives),
+        "05_consensus_max_roc.csv": pd.DataFrame(max_roc),
+        "05_consensus_max_percentile_roc.csv": pd.DataFrame(maxp_roc),
         "05_exclusive_hit_model_rank.csv": pd.DataFrame(rank_dist),
         "05_exclusive_hit_model_rank_compounds.csv": pd.DataFrame(rank_compounds),
     }
     dedup_outputs = {
         # built from the dedup cross matrix when available (see build_specificity_index)
         "05_specificity_index.csv": spec_df,
+        "05_consensus_sum_dedup_boxstats.csv": pd.DataFrame(sumd_stats),
+        "05_consensus_sum_dedup_actives.csv": pd.DataFrame(sumd_actives),
         "05_consensus_max_percentile_dedup_boxstats.csv": pd.DataFrame(maxd_stats),
+        "05_consensus_max_percentile_dedup_roc.csv": pd.DataFrame(maxd_roc),
         "05_consensus_max_percentile_dedup_actives.csv": pd.DataFrame(maxd_actives),
         "05_exclusive_hit_model_rank_dedup.csv": pd.DataFrame(rankd_dist),
         "05_exclusive_hit_model_rank_dedup_compounds.csv": pd.DataFrame(rankd_compounds),

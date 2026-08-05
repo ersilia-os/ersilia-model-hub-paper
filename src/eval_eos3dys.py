@@ -28,11 +28,10 @@ import os
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score, roc_curve
 
 from default import ACTIVITY_CLASSES, COADD_MODEL_ID, COADD_REF_STRAINS, SHARED_ORGANISMS
-from eval_common import evaluate, merged_variants
-from eval_euopenscreen import _load_exclusivity_task, _thin_curve, load_euos_primary
+from eval_common import evaluate
+from eval_euopenscreen import _load_exclusivity_task, load_euos_primary
 
 # eos3dys endpoint metric suffix -> CoAdd binarised subdir holding that endpoint's labels/training set.
 _METRIC_SUBDIR = {
@@ -427,58 +426,6 @@ def run_eos3dys_exclusive_rank(pred_dir, euos_root, coadd_root, config, eos_id=C
     return rank_rows, compound_rows
 
 
-def run_eos3dys_roc(pred_dir, euos_root, coadd_root, config, eos_id=COADD_MODEL_ID):
-    """ROC-curve points per matched organism and endpoint, for ALL actives and for EXCLUSIVE ones.
-
-    Feeds the eos3dys ROC grids. ``subset="all"`` uses every conclusive compound of the organism's
-    own primary assay; ``subset="exclusive"`` keeps only the actives that hit exactly 1 of the
-    matched organisms (see :func:`_hit_counts`), against the same inactives — so the two grids show
-    how much of an endpoint's ranking ability survives when pan-active compounds are removed.
-    One curve per endpoint metric (``inhib_50`` / ``mic_25``), reported ``raw`` + ``dedup``.
-    """
-    matched = matched_endpoints(pred_dir, eos_id)
-    labels = _matched_labels(euos_root, config, matched)
-    name_by_code = dict(zip(config["code"], config["pathogen"]))
-    path = os.path.join(pred_dir, "euopenscreen", f"{eos_id}.csv")
-    if not os.path.exists(path) or not labels:
-        print(f"  [skip] {eos_id} predictions or matched assays unavailable")
-        return []
-    pred_raw = pd.read_csv(path).rename(columns={"input": "smiles"})
-    pred_idx = pred_raw.drop_duplicates("smiles").set_index("smiles")
-    mat = _combined_scores(pred_idx, matched)
-    n_active, _ = _hit_counts(labels, mat.index)
-    exclusive = set(n_active[n_active == 1].index)
-
-    rows = []
-    for code, by_metric in sorted(matched.items()):
-        lab = labels.get(code)
-        if lab is None:
-            continue
-        inactives = lab[lab["bin"] == 0]
-        excl_lab = pd.concat([lab[(lab["bin"] == 1) & (lab["smiles"].isin(exclusive))], inactives],
-                             ignore_index=True)
-        for metric, ep in sorted(by_metric.items()):
-            ep_pred = pred_raw[["smiles", ep]].rename(columns={ep: "score"})
-            train_keys = coadd_training_inchikeys(coadd_root, ep)
-            for subset, sub_lab in (("all", lab), ("exclusive", excl_lab)):
-                for set_name, merged in merged_variants(ep_pred, sub_lab, train_keys):
-                    if merged["bin"].nunique() < 2:
-                        print(f"  [skip roc] {code} {metric} {subset}/{set_name}: one class only")
-                        continue
-                    y, s = merged["bin"].values, merged["score"].values
-                    fpr, tpr, _ = roc_curve(y, s)
-                    auroc = round(roc_auc_score(y, s), 4)
-                    fpr, tpr = _thin_curve(fpr, tpr)
-                    for x, t in zip(fpr, tpr):
-                        rows.append({
-                            "pathogen": name_by_code.get(code, code), "code": code,
-                            "endpoint": ep, "metric": metric, "subset": subset, "set": set_name,
-                            "fpr": round(float(x), 5), "tpr": round(float(t), 5),
-                            "n_pos": int(y.sum()), "n_neg": int((y == 0).sum()), "auroc": auroc,
-                        })
-    return rows
-
-
 def run_eos3dys_consensus_max(pred_dir, euos_root, coadd_root, config, eos_id=COADD_MODEL_ID):
     """MAXIMUM endpoint probability across the matched endpoints, active vs inactive.
 
@@ -576,8 +523,6 @@ def run_all(pred_dir, euos_root, coadd_root, config_path, output_dir, eos_id=COA
     print("[eos3dys] own-organism rank for exclusive hits ...")
     rank_rows, rank_compounds = run_eos3dys_exclusive_rank(
         pred_dir, euos_root, coadd_root, config, eos_id)
-    print("[eos3dys] ROC curves (all + exclusive actives) ...")
-    roc_rows = run_eos3dys_roc(pred_dir, euos_root, coadd_root, config, eos_id)
     print("[eos3dys] maximum endpoint probability, active vs inactive ...")
     max_stats, max_actives = run_eos3dys_consensus_max(
         pred_dir, euos_root, coadd_root, config, eos_id)
@@ -589,7 +534,6 @@ def run_all(pred_dir, euos_root, coadd_root, config_path, output_dir, eos_id=COA
         "eos3dys_hit_exclusivity.csv": excl_df,
         "eos3dys_exclusive_rank.csv": pd.DataFrame(rank_rows),
         "eos3dys_exclusive_rank_compounds.csv": pd.DataFrame(rank_compounds),
-        "eos3dys_roc.csv": pd.DataFrame(roc_rows),
         "eos3dys_consensus_max_boxstats.csv": pd.DataFrame(max_stats),
         "eos3dys_consensus_max_actives.csv": pd.DataFrame(max_actives),
     }

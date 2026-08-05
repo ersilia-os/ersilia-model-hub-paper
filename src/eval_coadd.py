@@ -18,7 +18,7 @@ import os
 
 import pandas as pd
 
-from default import COADD_ENDPOINTS, COADD_REF_STRAINS
+from default import COADD_ENDPOINTS, COADD_HITSET_ENDPOINT, COADD_REF_STRAINS
 from eval_common import evaluate, load_predictions, training_inchikeys
 
 
@@ -109,6 +109,148 @@ def build_coadd_leakage_report(config, coadd_root, train_cache):
     return rows
 
 
+def _load_hitset_labels(coadd_root, config):
+    """Reference-strain label frames for the hit-set endpoint, one per organism that has a file.
+
+    Shared front-end for the three cross-organism analyses (promiscuity, exclusivity, and the
+    overlap panel's organism set). Returns ``(labels, codes, name_by_code)`` where ``labels`` maps
+    code -> DataFrame[smiles, bin, inchikey] and ``codes`` preserves ``COADD_REF_STRAINS`` order.
+    Organisms with no file for this endpoint (efaecium, spneumoniae) are absent, logged by
+    :func:`load_coadd_labels`.
+    """
+    subdir, label_col = COADD_ENDPOINTS[COADD_HITSET_ENDPOINT]
+    name_by_code = dict(zip(config["code"], config["pathogen"]))
+    modelled = set(config["code"])
+    labels = {}
+    for code in COADD_REF_STRAINS:
+        if code not in modelled:
+            continue
+        lab = load_coadd_labels(coadd_root, code, subdir, label_col)
+        if lab is not None:
+            labels[code] = lab
+    codes = [c for c in COADD_REF_STRAINS if c in labels]
+    return labels, codes, name_by_code
+
+
+def _hit_counts(labels, codes):
+    """Map each distinct active SMILES to the list of organism codes it is a hit in.
+
+    Matching is on the standardised SMILES string, consistent with the rest of step 06 (the
+    predictions are joined to labels on ``smiles`` too). Also returns, per SMILES, how many
+    organisms actually tested it, so partial coverage can be reported rather than assumed.
+    """
+    actives = {c: set(labels[c].loc[labels[c]["bin"] == 1, "smiles"]) for c in codes}
+    tested = {c: set(labels[c]["smiles"]) for c in codes}
+    hit_codes, n_tested = {}, {}
+    for smiles in set().union(*[actives[c] for c in codes]) if codes else set():
+        hit_codes[smiles] = [c for c in codes if smiles in actives[c]]
+        n_tested[smiles] = sum(smiles in tested[c] for c in codes)
+    return hit_codes, n_tested
+
+
+def run_coadd_hit_promiscuity(coadd_root, config):
+    """Hit promiscuity — how many CoAdd actives are hits in 1, 2, ... N reference strains.
+
+    The CoAdd mirror of :func:`eval_euopenscreen.run_hit_promiscuity`: label-only (no model), on
+    the ``COADD_HITSET_ENDPOINT`` reference strains. ALL distinct actives are counted (the union
+    across organisms), including those not tested everywhere — for those the count is a lower
+    bound, so they are reported per bin as ``n_incomplete_coverage`` rather than dropped.
+
+    Returns ``(dist_rows, hit_rows)``: the aggregated distribution the figure reads, and the
+    per-compound table.
+    """
+    labels, codes, name_by_code = _load_hitset_labels(coadd_root, config)
+    if not codes:
+        print("  [skip] no CoAdd reference strains available for hit promiscuity")
+        return [], []
+    hit_codes, n_tested = _hit_counts(labels, codes)
+    keys = {}
+    for code in codes:
+        lab = labels[code].dropna(subset=["inchikey"])
+        keys.update(lab.set_index("smiles")["inchikey"].astype(str).to_dict())
+
+    n_org = len(codes)
+    hit_rows = [{
+        "smiles": smiles,
+        "inchikey": keys.get(smiles, ""),
+        "n_pathogens": len(hits),
+        "pathogens": ";".join(name_by_code.get(c, c) for c in hits),
+        "n_assays_tested": n_tested[smiles],
+    } for smiles, hits in hit_codes.items()]
+    hit_rows.sort(key=lambda r: (-r["n_pathogens"], r["smiles"]))
+
+    total = len(hit_rows)
+    counts = {k: 0 for k in range(1, n_org + 1)}
+    incomplete = {k: 0 for k in range(1, n_org + 1)}
+    for r in hit_rows:
+        counts[r["n_pathogens"]] += 1
+        if r["n_assays_tested"] < n_org:
+            incomplete[r["n_pathogens"]] += 1
+    dist_rows = [{
+        "n_pathogens": k,
+        "n_molecules": counts[k],
+        "frac_molecules": round(counts[k] / total, 5) if total else 0.0,
+        "n_molecules_ge": sum(counts[j] for j in range(k, n_org + 1)),
+        "n_incomplete_coverage": incomplete[k],
+    } for k in range(1, n_org + 1)]
+    n_incomplete = sum(incomplete.values())
+    print(f"  {total} distinct actives across {n_org} reference strains ({COADD_HITSET_ENDPOINT}); "
+          f"{n_incomplete} not tested in all {n_org} (their n_pathogens is a lower bound)")
+    return dist_rows, hit_rows
+
+
+def run_coadd_exclusivity(pred_dir, coadd_root, config, train_cache):
+    """Exclusive vs shared hit AUROC per organism, on the CoAdd reference strains.
+
+    The CoAdd mirror of step 05's analysis 3. EU OpenScreen reads precomputed exclusivity subsets
+    from ``06_subset_data/exclusivity/``; CoAdd has no such files, so the split is derived here
+    from the labels themselves: an active is ``exclusive`` when it is a hit in exactly one of the
+    reference strains and ``nonexclusive`` (shared) when it hits two or more. Negatives are the
+    organism's own reference-strain inactives, matching how ``_load_exclusivity_task`` builds the
+    step-05 task so the two figures stay comparable.
+
+    Only ``dedup`` records are returned — this analysis is reported leakage-filtered only. An
+    organism whose subset collapses to a single class (too few actives after filtering) is skipped
+    by :func:`evaluate` and logged here, rather than silently omitted.
+    """
+    labels, codes, name_by_code = _load_hitset_labels(coadd_root, config)
+    if not codes:
+        print("  [skip] no CoAdd reference strains available for hit exclusivity")
+        return []
+    hit_codes, _ = _hit_counts(labels, codes)
+    eosid_by_code = dict(zip(config["code"], config["eosid"]))
+
+    records = []
+    for code in codes:
+        eosid = eosid_by_code.get(code)
+        if eosid is None:
+            continue
+        pred = load_predictions(pred_dir, "coadd", eosid)
+        if pred is None:
+            continue
+        lab = labels[code]
+        inactives = lab[lab["bin"] == 0]
+        actives = lab[lab["bin"] == 1]
+        for mode, keep in (("exclusive", lambda n: n == 1), ("nonexclusive", lambda n: n >= 2)):
+            sub_act = actives[actives["smiles"].map(lambda s: keep(len(hit_codes[s])))]
+            if sub_act.empty:
+                print(f"  [skip] {code} {mode}: no actives in this subset")
+                continue
+            task = pd.concat([sub_act, inactives], ignore_index=True)
+            base = {
+                "pathogen": name_by_code.get(code, code), "code": code, "eosid": eosid,
+                "strain": COADD_REF_STRAINS[code], "endpoint": COADD_HITSET_ENDPOINT,
+                "subset": mode,
+            }
+            got = [r for r in evaluate(pred, task, train_cache.get(code), base)
+                   if r["set"] == "dedup"]
+            if not got:
+                print(f"  [skip] {code} {mode}: no dedup record "
+                      f"(no training set, or <2 classes after leakage filtering)")
+            records.extend(got)
+    return records
+
+
 def run_all(pred_dir, coadd_root, models_root, config_path, output_dir):
     """Run the CoAdd analyses and write the summary CSVs into ``output_dir``.
 
@@ -125,10 +267,19 @@ def run_all(pred_dir, coadd_root, models_root, config_path, output_dir):
     coadd_df = pd.DataFrame(run_coadd(pred_dir, coadd_root, config, train_cache))
     leak_df = pd.DataFrame(build_coadd_leakage_report(config, coadd_root, train_cache))
 
+    print(f"[CoAdd] hit promiscuity across reference strains ({COADD_HITSET_ENDPOINT}) ...")
+    prom_rows, hit_rows = run_coadd_hit_promiscuity(coadd_root, config)
+
+    print(f"[CoAdd] exclusive vs shared hit AUROC, dedup only ({COADD_HITSET_ENDPOINT}) ...")
+    excl_df = pd.DataFrame(run_coadd_exclusivity(pred_dir, coadd_root, config, train_cache))
+
     os.makedirs(output_dir, exist_ok=True)
     outputs = {
         "06_coadd_auroc.csv": coadd_df,
         "06_coadd_leakage_report.csv": leak_df,
+        "06_coadd_hit_promiscuity.csv": pd.DataFrame(prom_rows),
+        "06_coadd_promiscuous_hits.csv": pd.DataFrame(hit_rows),
+        "06_coadd_hit_exclusivity.csv": excl_df,
     }
     for fname, df in outputs.items():
         df.to_csv(os.path.join(output_dir, fname), index=False)

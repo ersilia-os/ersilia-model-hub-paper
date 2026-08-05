@@ -15,9 +15,6 @@ Panels (all dedup-preferred — CoAdd training compounds removed):
   :class:`plots_euopenscreen.ExclusiveHitModelRankPlot` on ``eos3dys_exclusive_rank.csv``: for each
   exclusive hit, where its own organism's combined (inhib_50 + mic_25) score ranks among the 6
   matched organisms, stacked by pathogen.
-- ``eos3dys_roc_grid_{metric}`` and ``..._{metric}_exclusive`` — the shared
-  :class:`plots_euopenscreen.EuosRocGridPlot` on ``eos3dys_roc.csv``, one grid per endpoint metric
-  over all actives and over exclusive actives only.
 - ``eos3dys_consensus_max_by_activity`` — the shared
   :class:`plots_euopenscreen.ConsensusMaxByActivityPlot` on ``eos3dys_consensus_max_boxstats.csv``:
   max endpoint probability across the 12 matched endpoints, active vs inactive, on the RAW scale
@@ -43,7 +40,6 @@ from plotting_utils import abbrev, box_with_jitter, diverging_cmap, grouped_hbar
 from plots_euopenscreen import (
     ConsensusMaxByActivityPlot,
     EuosOverlapTwinPlot,
-    EuosRocGridPlot,
     ExclusiveHitModelRankPlot,
 )
 from default import RANDOM_SEED, SHARED_ORGANISMS
@@ -187,7 +183,6 @@ def save_eos3dys_figures(subdir):
     excl = _read(subdir, "eos3dys_hit_exclusivity.csv")
     rank = _read(subdir, "eos3dys_exclusive_rank.csv")
     rank_compounds = _read(subdir, "eos3dys_exclusive_rank_compounds.csv")
-    roc = _read(subdir, "eos3dys_roc.csv")
     max_stats = _read(subdir, "eos3dys_consensus_max_boxstats.csv")
     max_actives = _read(subdir, "eos3dys_consensus_max_actives.csv")
     rank_names = dict(zip(rank_compounds["code"], rank_compounds["pathogen"])) \
@@ -211,16 +206,6 @@ def save_eos3dys_figures(subdir):
                                           name_by_code=rank_names, cells=(3, 3))
             p.name = f"eos3dys_exclusive_rank_{ranking}"
             plots.append(p)
-    # ROC grids: one per endpoint metric, for all actives and for exclusive actives only
-    if not roc.empty and {"metric", "subset"}.issubset(roc.columns):
-        for metric in sorted(roc["metric"].unique()):
-            for subset in ("all", "exclusive"):
-                sub = roc[(roc["metric"] == metric) & (roc["subset"] == subset)]
-                if sub.empty:
-                    continue
-                name = f"eos3dys_roc_grid_{metric}" + ("_exclusive" if subset == "exclusive" else "")
-                p = EuosRocGridPlot(sub, set_name="dedup", cols=3, name=name)
-                plots.append(p)
     # maximum endpoint probability, active vs inactive (raw scale, no normalisation needed)
     if not max_stats.empty:
         p = ConsensusMaxByActivityPlot(_dedup_first(max_stats), _dedup_first(max_actives),
