@@ -1,0 +1,57 @@
+model_id,slug,column_name,direction,organism,selected
+eos42ez,antibiotics-ai-cytotox,cytotoxicity_hepg2,higher,Homo sapiens,Yes
+eos42ez,antibiotics-ai-cytotox,cytotoxicity_hskmc,higher,Homo sapiens,Yes
+eos42ez,antibiotics-ai-cytotox,cytotoxicity_imr90,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,molecular_weight,higher,,No
+eos7m30,admet-ai-exact,logp,higher,,No
+eos7m30,admet-ai-exact,hydrogen_bond_acceptors,higher,,No
+eos7m30,admet-ai-exact,hydrogen_bond_donors,higher,,No
+eos7m30,admet-ai-exact,lipinski,higher,,No
+eos7m30,admet-ai-exact,qed,higher,,No
+eos7m30,admet-ai-exact,stereo_centers,higher,,No
+eos7m30,admet-ai-exact,tpsa,higher,,No
+eos7m30,admet-ai-exact,ames,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,bbb_martins,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,bioavailability_ma,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,cyp1a2_veith,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,cyp2c19_veith,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,cyp2c9_substrate_carbonmangels,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,cyp2c9_veith,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,cyp2d6_substrate_carbonmangels,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,cyp2d6_veith,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,cyp3a4_substrate_carbonmangels,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,cyp3a4_veith,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,carcinogens_lagunin,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,clintox,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,dili,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,hia_hou,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,nr_ar_lbd,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,nr_ar,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,nr_ahr,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,nr_aromatase,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,nr_er_lbd,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,nr_er,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,nr_ppar_gamma,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,pampa_ncats,higher,,No
+eos7m30,admet-ai-exact,pgp_broccatelli,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,sr_are,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,sr_atad5,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,sr_hse,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,sr_mmp,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,sr_p53,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,skin_reaction,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,herg,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,caco2_wang,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,clearance_hepatocyte_az,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,clearance_microsome_az,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,half_life_obach,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,hydrationfreeenergy_freesolv,higher,,No
+eos7m30,admet-ai-exact,ld50_zhu,higher,Homo sapiens,Yes
+eos7m30,admet-ai-exact,lipophilicity_astrazeneca,higher,,No
+eos7m30,admet-ai-exact,ppbr_az,higher,Homo sapiens,No
+eos7m30,admet-ai-exact,solubility_aqsoldb,higher,,No
+eos7m30,admet-ai-exact,vdss_lombardo,higher,Homo sapiens,No
+eos3le9,hepg2-mmv,ic50_hepg2_72h_5um,higher,Homo sapiens,Yes
+eos3le9,hepg2-mmv,ic50_hepg2_72h_10um,higher,Homo sapiens,Yes
+eos3dys,coadd-antimicrobial-activity,cytotoxicity_ic50,higher,Homo sapiens,Yes
+eos3dys,coadd-antimicrobial-activity,hemolitic_activity,higher,Homo sapiens,Yes

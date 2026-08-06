@@ -79,7 +79,7 @@ class PathogenProjectionGridPlot(GridPlot):
                 "y": g[f"{method}_y"].to_numpy() if len(g) else np.array([]),
             })
 
-        self.build_grid(items, cols=cols, name=f"10_{method}_top{top_n}_pathogens",
+        self.build_grid(items, cols=cols, name=f"09_{method}_top{top_n}_pathogens",
                         panel_fn=self._panel, edge_xlabel=f"{method.upper()} 1",
                         edge_ylabel=f"{method.upper()} 2")
         if self.is_available:
@@ -111,16 +111,16 @@ def save_projection_figures(output_dir, pathogens_csv, top_n=PROJECTION_TOP_N):
     """Build every step-09 figure (one per projection method) from the summary CSVs in
     ``output_dir`` and record their footprints in ``figure_cells.json``."""
     pathogens = pd.read_csv(pathogens_csv)
-    top_n_table = _read(output_dir, f"10_top{top_n}_per_pathogen.csv")
+    top_n_table = _read(output_dir, f"09_top{top_n}_per_pathogen.csv")
     footprints = {}
     for method in PROJECTION_METHODS:
-        background = _read(output_dir, f"10_{method}_background.csv")
+        background = _read(output_dir, f"09_{method}_background.csv")
         plot = PathogenProjectionGridPlot(method, background, top_n_table, pathogens, top_n=top_n)
         if plot.is_available:
             plot.save(output_dir)
             footprints[plot.name] = list(plot.cells)
             print(f"  figure: {plot.name}")
         else:
-            print(f"  [skip figure] 10_{method}_top{top_n}_pathogens: insufficient data")
+            print(f"  [skip figure] 09_{method}_top{top_n}_pathogens: insufficient data")
     with open(os.path.join(output_dir, "figure_cells.json"), "w") as f:
         json.dump(footprints, f, indent=2)

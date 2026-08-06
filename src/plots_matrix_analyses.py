@@ -1,4 +1,4 @@
-"""Figures for the score-matrix analyses (steps 08–09).
+"""Figures for the score-matrix analyses (steps 07–08).
 
 Two panels, both downstream of the named full-library score matrix built by step 07:
 
@@ -9,7 +9,7 @@ Two panels, both downstream of the named full-library score matrix built by step
     :mod:`plotting_colors` hues, :func:`plotting_utils.box_with_jitter` and
     :func:`plotting_utils.sentence_case`, under the stylia print/article style, and writes PNG **and**
     PDF — the vector copy is the readable one.
-  - :class:`MeanRankDistributionPlot` (step 09) — distribution of each compound's mean percentile rank
+  - :class:`MeanRankDistributionPlot` (step 07) — distribution of each compound's mean percentile rank
     across every selected endpoint. A single distribution fits the page grid comfortably, so this one
     follows the standard publication convention in ``docs/figure_conventions.md``.
 """
@@ -96,7 +96,7 @@ def pathogen_jaccard_figure(boxes, summary, *, cutoff, matrix_label, name, outpu
 
 
 # --------------------------------------------------------------------------- #
-# Step 09 — mean percentile rank distribution                                  #
+# Step 07 — mean percentile rank distribution (merged in from the former step 09, 2026-08-06)                                  #
 # --------------------------------------------------------------------------- #
 #: Histogram bins over the mean-rank range. 1.35M values into 120 bins leaves ~11k per bin on
 #: average — fine enough to show the tails without turning the outline into noise.
@@ -118,7 +118,7 @@ class MeanRankDistributionPlot(BasePlot):
     The panel carries no title, per the figure conventions; contextual counts go into the axis label.
     """
 
-    def __init__(self, values, *, name="09_mean_rank_distribution", label_note="", ax=None,
+    def __init__(self, values, *, name="07_mean_rank_distribution", label_note="", ax=None,
                  cells=(3, 4)):
         super().__init__(ax=ax, cells=cells)
         self.name = name

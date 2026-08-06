@@ -280,24 +280,48 @@ missing from `BIOAREA_GROUP`, so a new area added upstream cannot silently vanis
 panels no longer match and cannot be presented as a pair without saying so. It also shows exactly why
 `Any` had to be handled: at 116 models it sets the count axis and leaves every named organism a
 hairline. Every *named* Biomedical Area and Target Organism value is made up purely of Annotation
-models — Biomedical Area `Any` is 26 Annotation / 58 Representation / 19 Sampling and Target Organism
-`Any` is 40 / 57 / 19, while all 16 named areas and all 65 named organisms are 100 % Annotation.
-**One apparent exception is a known upstream mis-annotation, not real:** `eos93h2` (`image-mol-gpcr`)
-is recorded in Airtable as Task = Representation / Subtask = Featurization with Target Organism =
-*Homo sapiens*, but it should be an Annotation model; it is being corrected at source. It is drawn with
-the Annotation rows, which is what the corrected data will say. `Any` takes **silver** in
-`target_organism`, the repo's reserved neutral for a catch-all bucket; that panel carries no key, so a
-caption must state what its two colours mean.
+models. On the **Jul 30 2026 snapshot** Biomedical Area `Any` was 26 Annotation / 58 Representation /
+19 Sampling and Target Organism `Any` was 40 / 57 / 19, with all 16 named areas and all 65 named
+organisms 100 % Annotation.
 
-**When `eos93h2` is re-annotated upstream, change Task AND Subtask together.** The figures read task
-two ways: `task_subtask`, the waffle and the `*_by_subtask` panels colour by Subtask through
-`SUBTASK_PARENT`, while `runtime_100` / `image_size` and the Task counts read the `Task` column
-directly. Setting `Task = Annotation` while leaving `Subtask = Featurization` would make those two
-groups disagree **silently** — `task_subtask` would still draw the model as Representation-amber.
-Moving it to a Subtask absent from `SUBTASK_PARENT` / `SUBTASK_ORDER` fails loudly instead
-(`KeyError` in `SUBTASK_COLORS`), which is the safer failure. Expected deltas once fixed: Task
-Annotation 131→132 and Representation 58→57; Subtask Featurization 52→51 with +1 on whichever
-Annotation subtask it lands in.
+**RESOLVED 2026-08-06 — `eos93h2` is no longer an exception.** It was the one model breaking the rule:
+recorded in Airtable as Task = Representation / Subtask = Featurization while carrying Target Organism =
+*Homo sapiens*, when it is really a GPCR activity predictor. The upstream correction has landed, and it
+changed **both** fields as this section required:
+
+```
+Task:     Representation  ->  Annotation
+Subtask:  Featurization   ->  Activity prediction
+```
+
+Nothing else in the record moved (Status still Ready, Target Organism still *Homo sapiens*, Output
+Dimension still 10). Script 01 already drew it with the Annotation rows, so **no panel changes** —
+which is what this section predicted. Re-verified on the fresh metadata: **90 Ready models carry a
+named Target Organism and 0 are non-Annotation; 103 carry a named Biomedical Area and 0 are
+non-Annotation.** The invariant now holds with no exceptions, so the named-value bars taking the
+Annotation hue is unconditionally correct rather than correct-in-advance.
+
+`Any` takes **silver** in `target_organism`, the repo's reserved neutral for a catch-all bucket; that
+panel carries no key, so a caption must state what its two colours mean. On the fresh snapshot
+Target Organism `Any` is 40 Annotation / 61 Representation / 23 Sampling, Biomedical Area `Any` is
+27 / 61 / 23.
+
+**The Task/Subtask coupling still matters for the next such fix.** The figures read task two ways:
+`task_subtask`, the waffle and the `*_by_subtask` panels colour by Subtask through `SUBTASK_PARENT`,
+while `runtime_100` / `image_size` and the Task counts read the `Task` column directly. Setting
+`Task = Annotation` while leaving `Subtask = Featurization` would make those two groups disagree
+**silently** — `task_subtask` would still draw the model as Representation-amber. Moving a model to a
+Subtask absent from `SUBTASK_PARENT` / `SUBTASK_ORDER` fails loudly instead (`KeyError` in
+`SUBTASK_COLORS`), which is the safer failure.
+
+**Do not read the observed count deltas as this fix's effect.** This section previously predicted Task
+Annotation 131→132, Representation 58→57 and Subtask Featurization 52→51 for the fix *in isolation*,
+and that arithmetic was right. The measured Ready-only movement between the two snapshots is different
+because six models were added and four changed Status in the same pull: Annotation **131 → 130**
+(+1 from `eos93h2`, −1 each for `eos18ie` and `eos1lb5` going to *In maintenance*), Representation
+**58 → 61** (−1 `eos93h2`, +3 new featurizers, +1 new projector), Sampling **19 → 23**, total Ready
+**208 → 214**. By subtask: Activity prediction 92 → 91, Featurization 52 → 54, Generation 8 → 12,
+Projection 6 → 7, Property calculation 39 → 39, Similarity search 11 → 11.
 
 #### The two `*_by_subtask` stacks are sized to a page budget (2026-08-05)
 

@@ -40,6 +40,7 @@ Outputs
     data/raw/lazyqsar_benchmark/all_results.csv
     data/raw/airtable_metadata.csv
     data/processed/annotation_preds_ref_library/{model_id}_{version}.csv
+    data/processed/annotation_preds_ref_library/eos4djh_v1.csv
     data/processed/eos1klk_projection/eos1klk_v1.csv
 """
 
@@ -64,6 +65,7 @@ from default import (
     AIRTABLE_SHARE_URL,
     AIRTABLE_VIEW_ID,
     DRUGBANK_URL,
+    PHYSCHEM_MODEL_ID,
     PROJECTION_MODEL_ID,
     PROJECTION_PREDS_SUBDIR,
     REFERENCE_LIBRARY_URL,
@@ -502,6 +504,27 @@ for _, row in annotation_models.iterrows():
 if skipped:
     print(f"  Skipped {len(skipped)} models with no version: {skipped}")
 print(f"  Done. Annotation predictions in {annotation_dir}")
+
+# eos4djh (datamol-basic-descriptors, Task=Representation/Featurization) is not "Annotation", so
+# the loop above never sees it — fetched here explicitly instead. Release is pinned to v1 (Airtable
+# "v1.1.0"), following the same major-version-only convention as the annotation loop. Unlike the
+# projector below it lands in annotation_dir, because step 11 reads every property model from that
+# one folder; its Task is recorded in src/default.py, not in the path.
+print(f"\nDownloading {PHYSCHEM_MODEL_ID} (basic physicochemical descriptors, reference library)...")
+physchem_output_csv = os.path.join(annotation_dir, f"{PHYSCHEM_MODEL_ID}_v1.csv")
+if os.path.exists(physchem_output_csv):
+    print(f"  Already exists: {PHYSCHEM_MODEL_ID} v1")
+else:
+    try:
+        download_from_isaura(
+            model_id=PHYSCHEM_MODEL_ID,
+            model_version="v1",
+            input_csv=ref_path,
+            output_path=annotation_dir,
+        )
+        print(f"    -> {physchem_output_csv}")
+    except (Exception, SystemExit) as e:
+        print(f"  WARNING: {PHYSCHEM_MODEL_ID} not available or failed: {e}")
 
 # eos1klk (2D projector, Task=Representation/Projection) is not "Annotation", so the loop above
 # never sees it — fetched here explicitly instead. Release is pinned to v1 (Airtable "v1.2.0"),

@@ -142,9 +142,9 @@ def run_all(projection_file, pred_dir, pathogens_csv, output_dir, bins=PROJECTIO
     """Step 09 orchestrator: one background density grid per method, plus each pathogen's
     top-``top_n`` compounds (with every method's coordinates) computed once.
 
-    Writes ``10_{method}_background.csv`` (one row per grid cell: ``bin_i, bin_j, x_center,
+    Writes ``09_{method}_background.csv`` (one row per grid cell: ``bin_i, bin_j, x_center,
     y_center, n_compounds``) for each of :data:`default.PROJECTION_METHODS`, and one
-    ``10_top{top_n}_per_pathogen.csv`` (one row per (pathogen, compound): ``pathogen_code, key,
+    ``09_top{top_n}_per_pathogen.csv`` (one row per (pathogen, compound): ``pathogen_code, key,
     consensus_score`` + every method's ``{method}_x/_y``).
     """
     pathogens = pd.read_csv(pathogens_csv)
@@ -154,8 +154,8 @@ def run_all(projection_file, pred_dir, pathogens_csv, output_dir, bins=PROJECTIO
     for method in PROJECTION_METHODS:
         extent = method_extent(proj, method)
         background = background_density(proj, method, bins, extent)
-        background.to_csv(os.path.join(output_dir, f"10_{method}_background.csv"), index=False)
-        print(f"  [{method}] background grid ({bins}x{bins}) -> 10_{method}_background.csv")
+        background.to_csv(os.path.join(output_dir, f"09_{method}_background.csv"), index=False)
+        print(f"  [{method}] background grid ({bins}x{bins}) -> 09_{method}_background.csv")
 
     files = latest_version_files(pred_dir)
     tops = []
@@ -172,6 +172,6 @@ def run_all(projection_file, pred_dir, pathogens_csv, output_dir, bins=PROJECTIO
         print(f"  {code}: top {len(top)}/{top_n} "
               f"(score {top['consensus_score'].min():.3f}-{top['consensus_score'].max():.3f})")
     if tops:
-        out_path = os.path.join(output_dir, f"10_top{top_n}_per_pathogen.csv")
+        out_path = os.path.join(output_dir, f"09_top{top_n}_per_pathogen.csv")
         pd.concat(tops, ignore_index=True).to_csv(out_path, index=False)
         print(f"  -> {os.path.basename(out_path)} ({len(tops)} pathogens)")

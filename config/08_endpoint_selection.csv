@@ -72,42 +72,42 @@ eos3dys,coadd-antimicrobial-activity,saureus_ATCC43300_inhib_50,higher,Staphyloc
 eos3dys,coadd-antimicrobial-activity,saureus_ATCC43300_mic_25,higher,Staphylococcus aureus,Gram-positive bacteria,resistant,bioactivity,Yes
 eos3lyd,efflux-pump-avoidance-gram-negative,efflux_evader_proba,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
 eos3ujl,mtb-permeability,permeability_probability,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_00,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_01,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_02,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_03,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_04,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_05,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_06,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_07,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_08,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_09,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_10,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_11,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_12,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_13,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_14,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_0,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_1,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_2,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_3,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_4,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_5,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_6,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_7,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_8,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_9,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,consensus_score,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,pubchem_0,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,pubchem_1,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid1259417,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid1332,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid1949,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid2842,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid449764,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid492952,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid743175,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos46ev,chemtb,proba_chemtb,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_00,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_01,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_02,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_03,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_04,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_05,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_06,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_07,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_08,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_09,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_10,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_11,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_12,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_13,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_14,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_0,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_1,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_2,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_3,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_4,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_5,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_6,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_7,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_8,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,chembl_single_point_9,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,consensus_score,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_0,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_1,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid1259417,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid1332,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid1949,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid2842,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid449764,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid492952,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos43d6,antimicrobial-activity-mtuberculosis,pubchem_aid743175,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos46ev,chemtb,proba_chemtb,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
 eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_00,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
 eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_01,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
 eos4an7,antimicrobial-activity-pfalciparum,chembl_dose_response_02,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
@@ -305,7 +305,7 @@ eos7kpb,h3d-virtual-screening-cascade-light,clint_m_norm,higher,Mus musculus,,,A
 eos7kpb,h3d-virtual-screening-cascade-light,clint_r,higher,Rattus norvegicus,,,ADME,No
 eos7kpb,h3d-virtual-screening-cascade-light,clint_r_norm,higher,Rattus norvegicus,,,ADME,No
 eos7kpb,h3d-virtual-screening-cascade-light,mtb,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos7kpb,h3d-virtual-screening-cascade-light,mtb_norm,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos7kpb,h3d-virtual-screening-cascade-light,mtb_norm,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
 eos7kpb,h3d-virtual-screening-cascade-light,pf_k1,higher,Plasmodium falciparum,Protozoa,resistant,bioactivity,Yes
 eos7kpb,h3d-virtual-screening-cascade-light,pf_k1_norm,higher,Plasmodium falciparum,Protozoa,resistant,bioactivity,No
 eos7kpb,h3d-virtual-screening-cascade-light,pf_nf54,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
@@ -389,8 +389,8 @@ eos9bpi,antimicrobial-activity-enterobacter,consensus_score,higher,Enterobacter 
 eos9eyo,antimicrobial-activity-hpylori,chembl_dose_response_0,higher,Helicobacter pylori,Gram-negative bacteria,wild-type,bioactivity,Yes
 eos9f6t,chemprop-sars-cov-inhibition,activity,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
 eos9f7c,paeruginosa-permeation,permeability_proba,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,permeability,No
-eos9ivc,anti-mtb-seattle,mic50_10um,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos9ivc,anti-mtb-seattle,mic90_10um,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
-eos9ivc,anti-mtb-seattle,wcs_70percent,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,No
+eos9ivc,anti-mtb-seattle,mic50_10um,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos9ivc,anti-mtb-seattle,mic90_10um,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
+eos9ivc,anti-mtb-seattle,wcs_70percent,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
 eos9n1s,hemozoin-inhibition-physchem,tmm_proba,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,No
 eos9x3z,gram-negative-permeability-proxy,gn_activity,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No

@@ -643,3 +643,25 @@ def specificity_bars(ax, df, *, title="", order=None):
     hbar(ax, df["pathogen"].tolist(), values, colors=colors, abbreviate=True, ref=0.0)
     st.label(ax, xlabel="Specificity index (same − mean cross-pathogen AUROC)",
              ylabel="", title=title)
+
+
+def merge_figure_cells(output_dir, footprints):
+    """Merge ``footprints`` into ``output_dir/figure_cells.json`` instead of replacing it.
+
+    A step that writes more than one figure family into the same output dir — e.g. step 11's abx
+    UMAP grid alongside its per-pathogen overlap grids, or step 12's toxicity projection — would
+    otherwise have whichever writer ran last truncate the manifest to its own entries. Every
+    ``save_*_figures`` entry point routes through here so the manifest accumulates.
+    """
+    import json
+    import os
+
+    path = os.path.join(output_dir, "figure_cells.json")
+    existing = {}
+    if os.path.exists(path):
+        with open(path) as f:
+            existing = json.load(f)
+    existing.update(footprints)
+    with open(path, "w") as f:
+        json.dump(existing, f, indent=2)
+    return existing

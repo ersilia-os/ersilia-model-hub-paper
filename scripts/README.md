@@ -9,9 +9,14 @@ ChEMBL model reports and curation summaries), public GitHub files (Ersilia refer
 DrugBank), Airtable model metadata, and Isaura precalc predictions for Ready annotation models.
 Skip-if-exists, so it is safe to re-run. `--skip-isaura` skips the slow Isaura section; `--eosvc`
 pulls Section 1 from eosvc instead of the companion repos.
-Section 4 also fetches `eos1klk` (2D projector, Task=Representation/Projection) explicitly — its
-Task isn't "Annotation", so the automatic loop above never sees it — into
-`data/processed/eos1klk_projection/eos1klk_v1.csv`, feeding step 09.
+Section 4 also fetches two Representation models explicitly, since the automatic loop is filtered to
+`Task == "Annotation"` and never sees them: `eos1klk` (2D projector, Subtask=Projection) into
+`data/processed/eos1klk_projection/eos1klk_v1.csv`, feeding step 10; and `eos4djh`
+(datamol-basic-descriptors, Subtask=Featurization) into
+`data/processed/annotation_preds_ref_library/eos4djh_v1.csv`, feeding step 10. Both pin the major
+version only (`v1`), matching the loop. **`eos4djh` lands in the annotation folder despite not being an
+annotation model** — the property steps read every property model from that one directory, and the model's real
+Task is recorded on `PHYSCHEM_MODEL_ID` in `src/default.py` rather than in the path.
 **Key decision:** ChEMBL model performance metrics are recomputed downstream from the per-fold
 `09_reports`; the staged `10_reports/` CSVs are kept only for fields that cannot be reconstructed
 (quality weights, decision cutoffs, discarded-model reasons).
@@ -81,13 +86,36 @@ count whatever the dots hold. Which models appear is driven by `config/model_tra
 curated model-to-pathogen mapping, rows with too-generic organism assignments removed by hand), **not**
 by the Airtable Target Organism field, so it shows fewer models than the Target Organism bar panel.
 
-**Known upstream mis-annotation:** `eos93h2` (`image-mol-gpcr`) is recorded in Airtable as
-Representation / Featurization with Target Organism = *Homo sapiens*, but it should be an Annotation
-model — being fixed at source. It is the only thing that breaks the "named organisms are
-Annotation-only" rule, and it is already drawn as an Annotation row, so these two panels need no
-change when the fix lands. When it does, **Task and Subtask must be changed together** — see the
-warning in `docs/figure_conventions.md`, since a Task-only edit would leave the subtask-coloured
-panels disagreeing with the task-coloured ones without erroring.
+**Upstream mis-annotation — FIXED 2026-08-06.** `eos93h2` (`image-mol-gpcr`) was recorded in Airtable as
+Representation / Featurization with Target Organism = *Homo sapiens*, when it is really a GPCR activity
+predictor. It was the only thing breaking the "named organisms are Annotation-only" rule that the
+Biomedical Area and Target Organism panel colours depend on. The correction has landed and it moved
+**both** fields together, as required: `Task` Representation → Annotation and `Subtask` Featurization →
+Activity prediction. Nothing else in the record changed. Script 01 already drew it as an Annotation row,
+so **no panel needs changing**. Re-verified on the fresh metadata: 90 Ready models carry a named Target
+Organism and 0 are non-Annotation; 103 carry a named Biomedical Area and 0 are non-Annotation — the rule
+now holds with no exceptions. The Task/Subtask coupling warning in `docs/figure_conventions.md` still
+applies to any future re-annotation, since a Task-only edit leaves the subtask-coloured panels
+disagreeing with the task-coloured ones **without erroring**.
+
+**`eos93h2` is now visible to `00_download_data.py`'s Section 4 loop**, which filters
+`Task == "Annotation" & Status == "Ready"` — a test it previously failed. It has `Release = v1.0.0` and
+no staged prediction file, so a re-run will try to fetch it from Isaura. It is a **human GPCR** model
+with no antimicrobial relevance and appears in no config file, so its 10 endpoints do not enter
+`config/08_endpoint_selection.csv` without a deliberate decision.
+
+**Metadata snapshot refreshed 2026-08-06: 219 → 225 models, Ready 208 → 214.** Every "n = 208" below
+predates it. The previous snapshot is preserved at `tmp/airtable_metadata_20260730_backup.csv`. Six
+models were added — `eos19dk` (molcompass, Projection), `eos5g6m` (glacier-embeddings), `eos5mnx`
+(sand-shape-descriptor), `eos6pj2` (nafm-embeddings), `eos8zvb` (pymolgen) and `eos84nf`
+(genmol-scaffold-decoration, *In progress*) — **none of them an Annotation model**, so none adds
+bioactivity endpoints. Four models changed Status: `eos8vud`, `eos69e6` and `eos4qda` became Ready,
+while **`eos18ie` (antibiotics-ai-saureus) and `eos1lb5` went to *In maintenance***. Ready-only Task
+counts: Annotation 131 → 130, Representation 58 → 61, Sampling 19 → 23.
+**`eos18ie` is a selected endpoint whose model is now in maintenance** — it is row 1 of
+`config/08_endpoint_selection.csv` (`saureus_inhibition_probability`, `Yes`) and is in the step-07
+cache, so it stays in the score matrices while dropping out of every `Status == "Ready"` metadata panel.
+That inconsistency is unresolved and needs a decision.
 
 **Technical box row.** Three **horizontal** panels per Task on a log x axis, sharing one task axis and
 occupying **4/6 of the page width (120 mm) × 30 mm** between them: `runtime_100`, `image_size` and
@@ -794,8 +822,20 @@ multi-cutoff CoAdd matrix, cross-organism/specificity, ROC grid and per-submodel
 Builds the foundation of the correlation analysis: the full-library prediction matrices. All annotation
 models were run by `00_download_data.py` on the same ~1.35M-compound reference library
 (`data/processed/annotation_preds_ref_library/`), aligned on the `key` hash — a clean rectangular
-matrix. Produces **five** matrices, each 1,355,109 x 260, plus the parquet cache behind them. Engine in
-`src/eval_correlations.py`; writes to `output/07_score_matrices/`.
+matrix. **Defines** five matrices, one row per compound and one column per `selected == Yes` endpoint
+(**300** as the config stands), but by default **writes only the parquet cache** behind them plus the
+mean-rank outputs below. Engine in `src/eval_correlations.py`; writes to `output/07_score_matrices/`.
+
+**The five scaled CSVs are opt-in (`--write-matrix-csvs`), and off by default.** They are ~23.5 GB of
+text and ~1 h 54 m of pure serialisation, and **no code in this repo reads them** — every downstream
+step (08–14) re-derives its own scaling from `07_score_matrix_full.parquet`, which is columnar and
+~15x smaller. `src/eval_auroc_matrix.py` says so explicitly at its top. They exist as human-readable
+exports only, so a rebuild no longer pays for them unless asked:
+
+```
+python 07_score_matrices.py                      # parquet cache + mean-rank figure  (~5 min)
+python 07_score_matrices.py --write-matrix-csvs  # also the five CSV exports        (+~1 h 54 m)
+```
 
 | matrix | transform |
 |---|---|
@@ -825,9 +865,53 @@ matrix. Produces **five** matrices, each 1,355,109 x 260, plus the parquet cache
 - **Pre-existing missing values are kept, not imputed.** 15 of 1,355,109 compounds lack one endpoint
   (`pfalciparum__eos4zfy__maip_score`); each is normalized over its 259 available endpoints and the
   missing cell stays NaN. Counted and printed; nothing filled or dropped.
-- **CSV, not parquet**, at explicit user request: ~26 GB of text across the five versus ~7 GB as float32
-  parquet, and noticeably slower to write and read. A real tradeoff, accepted deliberately. The raw
+- **CSV, not parquet**, for those exports when they are requested, at explicit user request: ~23.5 GB of
+  text across the five versus ~7 GB as float32 parquet, and noticeably slower to write and read. A real
+  tradeoff, accepted deliberately — and since 2026-08-06 one paid only on demand, because the format
+  argument applies to a human reading the file, not to the pipeline, which uses the parquet. The raw
   prediction CSVs (~15 GB) are read at most **once**, into `07_score_matrix_full.parquet`.
+- **The `260`-based numbers throughout the step 08–14 sections below were measured under the earlier
+  260-endpoint selection.** Steps 07–14 were rebuilt from scratch at 300 endpoints on 2026-08-06; where
+  a re-measured value is known it is given alongside, but treat any bare `260`/`67,600`/`26,260` as
+  historical.
+
+### Mean percentile rank per compound (merged in from the former step 09, 2026-08-06)
+
+Collapses the rank-percentile matrix along its columns to one number per compound — its **mean
+percentile rank** across all selected endpoints — and shows the distribution over the full library as a
+histogram. Answers "how highly does this molecule rank, on average, across everything we predict".
+Writes `07_mean_rank_per_compound.csv`, `07_mean_rank_quantiles.csv` and the
+`07_mean_rank_distribution` panel (PNG + PDF + `figure_cells.json`) into `output/07_score_matrices/`.
+Figure class in `src/plots_matrix_analyses.py`.
+
+**Why it lives here now:** it needs the named matrix and the `rank_pct` scaling, both of which this
+script already has, and it consumed nothing else. As a separate step it rebuilt the same matrix from
+the same parquet a second time. `base` is now built once and serves both sections; the mean-rank block
+is **skip-if-exists** on `07_mean_rank_per_compound.csv`, matching the five matrix CSVs. The former
+`scripts/09_mean_rank_distribution.py` was removed from the tree (recoverable via
+`git show <rev>:scripts/09_mean_rank_distribution.py`), and its stale 260-endpoint
+`output/09_mean_rank_distribution/` was deleted.
+
+**Key decisions, for review:**
+- **Mean, not sum.** The request was phrased as a column-wise sum; the reported quantity is the mean,
+  which is what "average rank" means and keeps the value on the interpretable [0, 1] percentile scale.
+  They differ only by a constant factor — multiply by `n_endpoints` for the sum.
+- **The centre of this distribution is fixed by construction, not a finding.** Each percentile-rank
+  column has mean ~= 0.5, so the grand mean of the row means is ~= 0.5 necessarily (observed **0.5000**
+  at 300 endpoints). Only the **spread and shape** carry information: observed **SD 0.1289** against the
+  ~0.0167 that 300 mutually independent endpoints would give — a ~7.7x inflation — over a range of
+  **0.1518–0.8616**, i.e. no compound ranks in the top decile of everything nor the bottom decile of
+  everything. What that inflation means substantively (shared chemistry, correlated training data,
+  genuine broad-spectrum compounds) is **not** something these numbers settle.
+- **Quantiles** at 300 endpoints: 0.1973 / 0.2379 / 0.2887 / 0.4004 / 0.5023 / 0.5997 / 0.7059 / 0.7580
+  / 0.8017 for the 0.1st, 1st, 5th, 25th, 50th, 75th, 95th, 99th and 99.9th percentiles.
+- **No rows dropped for missing values** — the 15 partially-scored compounds
+  (`pfalciparum__eos4zfy__maip_score`) are averaged over the 299 endpoints they have, with
+  `n_endpoints` per row in the CSV so they stay visible. NaN-skipping mean, never zero-filled.
+- Follows the standard publication figure convention (`BasePlot`, PNG + PDF + `figure_cells.json`).
+  **This is the only figure step 07 produces**, so `figure_cells.json` in that folder holds exactly one
+  entry.
+- Previous 260-endpoint values, for comparison: mean 0.5000, SD 0.133, range 0.140–0.869.
 
 ## 08_pathogen_jaccard.py
 Asks whether endpoints of the SAME pathogen pick out the same compounds more than endpoints of
@@ -841,20 +925,31 @@ a per-pathogen summary CSV, and PNG + PDF to `output/08_pathogen_jaccard/`.
   run and compared rather than one overwriting another — outputs are suffixed `min<K>`). A pathogen must
   have at least K endpoints **of its own**; those below are removed from the analysis *entirely*, ceasing
   to be different-pathogen partners too, not merely losing their own box. **User-directed, not fitted.**
-  At `min5`: 209 of 260 columns, 11 of 56 pathogens. At `min2` (the weakest defensible bar, 2 endpoints
-  being the minimum for any same-pathogen pair to exist): 219 columns, 15 pathogens — but `bfragilis` and
-  `cneoformans` rest on a single pair each and `ngonorrhoeae`/`lmajor` on three, which is why 5 is the
-  more defensible default.
+  Re-run 2026-08-06 on the 300-endpoint selection. At `min5`: **249 of 300 columns, 12 of 57 pathogens**
+  (45 pathogens / 51 columns dropped). At `min2` (the weakest defensible bar, 2 endpoints being the
+  minimum for any same-pathogen pair to exist): **259 columns, 16 pathogens** — but `bfragilis` and
+  `cneoformans` rest on a single pair each and `ngonorrhoeae` on three, which is why 5 is the more
+  defensible default. `bfragilis`'s single pair is why it tops the `min2` baseline ranking at 0.5026,
+  five times the next value; that is one pair, not a finding.
+  **Both thresholds must be passed explicitly** (`python 08_pathogen_jaccard.py 2 5`) —
+  `DEFAULT_MIN_COLUMNS` is `(5,)`, so a bare re-run refreshes `min5` and leaves the `min2` outputs
+  behind at whatever selection produced them. Previous figures were 209 of 260 columns / 11 of 56
+  pathogens at `min5`.
 - **Three matrix variants, not five.** Top-N Jaccard depends only on each column's own internal ranking,
   and both column scalings are strictly increasing per column — so z-scoring and rank-percentiling cannot
   change any column's top-1000 set. The unscaled and both scaled matrices give the same result, computed
   once; only the row-normalized matrices change rankings. The script **asserts** this at runtime rather
   than assuming it, and the assertion earns its keep: baseline == rank-percentiled holds exactly, but
   baseline == z-scored comes back **False** — `(x - mean) / std` in float32 reorders near-tied values in
-  one column of 260 (`lmajor__eos60mw__leishmania_*`, 155 of its top-1000 shift), touching 138 of 67,600
-  cells at ~0.001.
+  exactly **one column of 300** (`lmajor__eos60mw__leishmania_mlp`, 155 of its top-1000 members shift),
+  touching **156 of 90,000 cells**, max absolute difference 0.001032 and mean 0.000599 over those cells.
+  Re-verified on the 300-endpoint rebuild: still that one column and no other, and
+  baseline == rank-percentiled differs in **0 of 90,000** cells. (At 260 endpoints it was 138 of 67,600.)
+  Note the difference floor is ~1/2000 = 5e-4, the granularity of a Jaccard over two ~1000-element sets,
+  so any comparison reporting differences below that is reading float noise — e.g. from a CSV round-trip
+  rather than the in-memory arrays the assertion uses.
 - **Same-model pairs are included** (the literal "each column against all others"). This matters at
-  pathogen level: at `min5`, **3 of the 11 surviving pathogens** (`espp`, `spneumoniae`, `efaecium`) have
+  pathogen level: at `min5`, **3 of the 12 surviving pathogens** (`espp`, `spneumoniae`, `efaecium`) have
   `n_same_pairs_excl_same_model == 0` — every same-pathogen pair they have comes from one model's multiple
   output columns, so their box is that model agreeing with itself and says nothing about cross-model
   specificity. `espp` tops the `min5` baseline ranking on exactly that basis. The summary CSV carries
@@ -865,27 +960,7 @@ a per-pathogen summary CSV, and PNG + PDF to `output/08_pathogen_jaccard/`.
   `docs/figure_conventions.md`, since the per-pathogen endpoint and pair counts on the y-axis go illegible
   at page width. PNG *and* PDF are still written; the vector copy is the readable one.
 
-## 09_mean_rank_distribution.py
-Collapses the rank-percentile matrix along its columns to one number per compound — that compound's
-**mean percentile rank** across the 260 endpoints — and shows the distribution over the full library as a
-histogram. Answers "how highly does this molecule rank, on average, across everything we predict".
-Figure in `src/plots_matrix_analyses.py`; writes to `output/09_mean_rank_distribution/`.
-**Key decisions, for review:**
-- **Mean, not sum.** The request was phrased as a column-wise sum; the reported quantity is the mean
-  (sum / 260), which is what "average rank" means and keeps the value on the interpretable [0, 1]
-  percentile scale. They differ only by that constant factor — multiply by `n_endpoints` for the sum.
-- **The centre of this distribution is fixed by construction, not a finding.** Each percentile-rank column
-  has mean ~= 0.5, so the grand mean of the row means is ~= 0.5 necessarily (observed 0.5000). Only the
-  **spread and shape** carry information: observed SD 0.133 against the ~0.018 that 260 mutually
-  independent endpoints would give, and a range of 0.140-0.869 (no compound ranks in the top decile of
-  everything, nor the bottom decile of everything). What that ~7x inflation means substantively is not
-  something these numbers settle.
-- **No rows dropped for missing values** — the 15 partially-scored compounds are averaged over 259
-  endpoints, with `n_endpoints` per row in the CSV so they stay visible.
-- Follows the standard publication figure convention (`BasePlot`, PNG + PDF + `figure_cells.json`) — a
-  single distribution fits the page grid, unlike the step 08 diagnostic.
-
-## 10_reference_library_projection.py
+## 09_reference_library_projection.py
 Visualises where the reference library sits in chemical space, highlighting each pathogen's
 highest-predicted-activity compounds. `eos1klk` (fetched by `00_download_data.py`) computes four 2D
 projections of the library — PCA, UMAP, t-SNE, TMAP; each gets its own figure: a silver background of the
@@ -893,7 +968,7 @@ full library's density, with each of the 15 pathogens in `config/pathogens_of_in
 panel showing its `PROJECTION_TOP_N` highest-scoring compounds (by `consensus_score`) in crimson. This is a
 **rank cutoff (top-N), never a score threshold** — no `consensus_score` cutoff value is chosen or reviewed,
 only a compound count. Analysis in `src/eval_projection.py`, figures in `src/plots_projection.py`; writes to
-`output/10_reference_library_projection/`.
+`output/09_reference_library_projection/`.
 **Memory:** only one pathogen's `key` + `consensus_score` columns (of each ~424 MB prediction file) are read
 at a time, immediately reduced to its `PROJECTION_TOP_N` highest rows and discarded — no more than one
 pathogen's raw scores, and never all 15 prediction files, are held in memory together. The score ranking
@@ -903,3 +978,419 @@ does not depend on projection method, so each pathogen's top-N is computed once 
 - **Grid resolution** (`PROJECTION_BINS`) for the silver background density is **60x60** cells per method —
   sized to stay legible at the ~30x30 mm panel size in a 15-pathogen small-multiples grid, not a fitted
   value.
+
+## 10_physchem_matrix.py
+Builds the **physchem** block of the reference library from `config/physchem_models.csv` — all 22
+descriptors of `eos4djh` (datamol-basic-descriptors) — one row per compound, plus a per-endpoint stats
+CSV and a 22-panel distributions figure. Writes `output/10_physchem_matrix/`. Collection logic in
+`src/eval_property_matrix.py` (shared with step 12), figure in `src/plots_property_matrix.py`.
+**Split out of the former `11_additional_properties.py` (2026-08-06)**, which built the physchem and
+cytotox blocks in one 46-column table. Each family now builds its own matrix, so a consumer opens only
+the blocks it needs and the two kinds of number cannot be conflated. The superseded script is kept at
+`tmp/superseded_scripts/11_additional_properties.py` — it was never committed, so there is no git
+history to recover it from.
+**Column naming:** `physchem__{model_id}__{column_name}`, the same three-part shape as the pathogen
+matrix (step 07, prefix = pathogen code), the abx block (step 11) and the cytotox block (step 12), so
+the families join column-wise on `key`.
+**These are calculations, not predictions.** `eos4djh` wraps deterministic RDKit-family arithmetic, so
+this is the one property block with no model error, no training set and no leakage dimension. A caption
+must not describe it as "predicted", and steps 13/14 must not read it as interchangeable with the
+predicted blocks.
+**All 22 descriptors are kept even though 5 are near-redundant** (a signed-off request, not an
+oversight). Verified on 200k rows: `n_rings`, `n_aliphatic_rings`, `n_aromatic_rings` and
+`n_saturated_rings` are each **exactly** the sum of their two carbocycle/heterocycle components on 100%
+of rows, and `n_radical_electrons` is 0 for all but 38 of 200,000 compounds (the run reports it as the
+one endpoint non-zero in <1% of the library). Anything fitting a model or drawing a correlation matrix
+off this block should drop those five first — the independent set is the other 17.
+(`n_saturated_rings` is *not* a duplicate of `n_aliphatic_rings`; they differ on 34% of rows.)
+**Observed descriptor ranges are the library's filter, not the model's.** MW 198.9–699.5, cLogP
+−2.0–7.0, `n_rings` ≤ 6 — the Ersilia reference library is already drug-like-filtered, so these bounds
+describe the input set. A caption must not read them as a property of `eos4djh`.
+**Upstream spelling kept:** `n_aliphatic_heterocyles`, `n_aromatic_heterocyles` and
+`n_saturated_heterocyles` are misspelled in Datamol itself. The config matches the real CSV header
+rather than correcting it, or the lookup would miss.
+**Figure: distributions, not a UMAP.** The abx and cytotox blocks are drawn as UMAP highlights because
+"the top N most antibiotic-like compounds" is a set worth locating in chemical space; "the top N
+compounds by molecular weight" is an arbitrary slice of a continuous descriptor. So this block is
+summarised by each descriptor's full-library distribution — a 5-column small-multiples grid, **(5, 5)
+cells**. Every endpoint gets a panel including the near-constant `n_radical_electrons`; a flat panel is
+the honest rendering of a flat column.
+**Un-normalized only**, matching the other two blocks: choosing a transform is a decision for after the
+blocks are joined, and `10_physchem_endpoint_stats.csv` is what that decision should be made from.
+**No rows dropped**, nothing imputed; 0 missing values across all 22 endpoints.
+
+## 11_abx_resemblance_matrix.py
+The antibiotic-resemblance score matrix and its endpoints on the library UMAP, from
+`config/antibiotic_resemblance.csv` (55 selected endpoints across 4 models). **Renamed from
+`12_antibiotic_resemblance_matrix.py` (2026-08-06)**; outputs moved to
+`output/11_abx_resemblance_matrix/` with the `11_abx_*` prefix, and the figure key in
+`figure_cells.json` became `11_umap_abx_endpoints_max1000`. Engine `src/eval_abx_matrix.py`, figure
+`src/plots_abx_projection.py`.
+**Column naming:** `abx__{model_id}__{column_name}` — a constant group code in the pathogen slot.
+**Un-normalized only**, by request, for the same reason as the other two blocks.
+**The highlight rule is not a rank cutoff.** 44 of the 55 endpoints are binary or small integer counts,
+so each panel shows every compound with a value > 0, capped at `PROJECTION_TOP_N` — never padded. **19
+endpoints hit that cap**, so their panels show an arbitrary key-ordered subset, not the full flagged
+set; read each panel's `n_shown/n_nonzero` annotation.
+**4 endpoints are constant zero library-wide** (`arsenic_cpds`, `b_lactamase_inhibitors`,
+`lipopeptides`, `polypeptides`) and are omitted from the **figure only** — they remain in the matrix and
+the stats CSV. 32 of 55 have fewer than 1000 non-zero compounds. 66 missing values, kept.
+**Reuses step 09's `09_umap_background.csv`** rather than recomputing the density, so its panels are
+directly comparable to the pathogen ones.
+
+### Pathogen x abx overlap (merged in from the former step 14, 2026-08-06)
+Outputs renamed `14_*` -> `11_*`; the 15 figure keys are now `11_umap_abx_overlap_{pathogen}`.
+Merged because the abx side of the intersection is the highlights table this step writes a few lines
+earlier — as a separate step it re-read it from disk. The superseded script is at
+`tmp/superseded_scripts/14_pathogen_abx_overlap.py` (never committed), and
+`output/14_pathogen_abx_overlap/` was deleted after its two CSVs were verified byte-identical to the
+regenerated `11_*` ones.
+
+**`figure_cells.json` had to become append-not-replace for this merge.** Step 11 now writes two figure
+families into one dir, and all three `save_*_figures` entry points previously opened the manifest with
+`"w"` from an empty dict — so whichever ran last truncated it to its own entries, silently losing the
+abx grid's footprint. They now route through `plotting_utils.merge_figure_cells`. Verified: step 11's
+manifest holds **16** entries (1 abx grid + 15 overlap).
+
+Overlays each pathogen's predicted hits with each antibiotic-resemblance endpoint's compounds on the
+`eos1klk` UMAP, on the same silver full-library background used by steps 10, 12 and 13. **One figure per
+pathogen** (15), each a 3x3 grid with one panel per abx endpoint and three point groups: crimson =
+pathogen only, cobalt = antibiotic-like only, lime = **both** (drawn last and larger, since the
+intersection is the subject). Analysis in `src/eval_pathogen_abx_overlap.py`, figures in
+`src/plots_pathogen_abx_overlap.py`; writes into `output/11_abx_resemblance_matrix/`.
+**Pure set arithmetic — no new scoring and no threshold.** It reads two summary CSVs that already exist
+(`10_top1000_per_pathogen.csv` and `12_abx_umap_highlights.csv`) and never touches a prediction file or a
+full matrix.
+**Endpoints** are `ABX_OVERLAP_ENDPOINTS` in `src/default.py` — 9 of the 55 selected in
+`config/antibiotic_resemblance.csv`, user-directed, spanning one continuous learned score (`abx_score`),
+two AntibioticDB similarity counts, and six substructure/class flags. Two were requested under names that
+do not exist in the config and were corrected to its spelling: `betalactan_motif` -> `betalactam_motif`,
+`b_lactam_all` -> `b_lactams_all`.
+**The two sides are NOT selected the same way, and a panel cannot be read without knowing this.** The
+pathogen side is a rank cutoff — the top `PROJECTION_TOP_N` = 1000 by `consensus_score`, so every pathogen
+contributes exactly 1000. The abx side is not: only `abx_score` is continuous, so step 11's rule (every
+compound with value > 0, capped at 1000) applies. Three of the nine have fewer positives library-wide than
+the cap and are drawn exhaustively (`carbepenem_motif` 346, `ansamycins_rifamycins_macrolides` 577,
+`b_lactams_all` 733); the other six hit the cap and are an **arbitrary** subset of their positives.
+Panels mark a capped endpoint with a trailing `*` on the `n=` annotation, and `14_overlap_counts.csv`
+carries `n_abx`/`abx_capped` per row — so an intersection of zero can be read as "no overlap" rather than
+confused with "this endpoint barely has any hits at all".
+**`14_overlap_counts.csv`** holds `n_pathogen`, `n_abx`, `n_both` and the Jaccard index for all 135
+(pathogen x endpoint) pairs — the summary to read before interpreting any single panel.
+
+## 12_cytotox_matrix.py
+Builds the **cytotox** block from `config/cytotoxicity_models.csv` (24 selected endpoints across 4
+models: `eos42ez`, `eos7m30`, `eos3le9`, `eos3dys`), plus a per-endpoint stats CSV. Writes
+`output/12_cytotox_matrix/`. Shares `src/eval_property_matrix.py` with step 10.
+**Split out of the former `11_additional_properties.py`** alongside step 10, same rationale.
+**Every column here is a prediction**, unlike step 10's deterministic descriptors. The two must not be
+treated interchangeably.
+**The cytotox figure is the toxicity projection below**, merged in from the former step 13 — it needs
+this matrix plus step 09's UMAP background. This step also supplies the matrix that steps 13 and 14
+read.
+**`eos7m30`'s own 8 physicochemical columns stay `No`** in the config, so `eos4djh` remains the single
+physchem source and no two blocks can disagree about molecular weight or logP.
+**Carrying the model ID matters here:** two models score HepG2 —
+`cytotox__eos42ez__cytotoxicity_hepg2` vs `cytotox__eos3le9__ic50_hepg2_72h_5um` — and the column name
+is what keeps them apart.
+**Endpoint selection is not made here** — it is the manually curated `selected` column. No threshold or
+cutoff is applied; raw outputs pass through unchanged. 0 missing values across all 24 endpoints.
+**Alignment:** prediction files are concatenated column-wise only after their `key` order is verified
+against the first file; any file whose order differs is reindexed on `key` rather than concatenated
+blindly.
+
+### Toxicity projection (merged in from the former step 13, 2026-08-06)
+Outputs renamed `13_*` -> `12_*`; the figure key in `figure_cells.json` is now
+`12_umap_top1000_toxicity`. Merged because it consumes exactly this step's matrix and nothing else.
+The superseded script is at `tmp/superseded_scripts/13_toxicity_projection.py` (never committed, so
+no git history to recover it from), and `output/13_toxicity_projection/` was deleted after its four
+CSVs were verified byte-identical to the regenerated `12_*` ones.
+
+The toxicity counterpart of step 10, on the same `eos1klk` chemical-space layout: a silver
+full-library density background with, in crimson, each toxicity endpoint's most toxic compounds. One
+small-multiples figure (`13_umap_top1000_toxicity`), 24 panels — one per `selected == "Yes"` endpoint in
+`config/cytotoxicity_models.csv` — scored from the step-12 cytotox matrix. Analysis in
+`src/eval_tox_projection.py`, figure in `src/plots_tox_projection.py`; writes to
+`output/12_cytotox_matrix/`. Panels are labelled with both the endpoint and its model ID, since
+several endpoints read overlapping biology from different models (two HepG2 readouts, three cytotoxicity
+readouts).
+**Top N per endpoint** is `PROJECTION_TOP_N` = **1000**, shared with step 09 — a **rank cutoff, never a
+score threshold**, so no score value is chosen or reviewed, only a compound count.
+**Projection method:** only UMAP (`TOX_PROJECTION_METHOD`) of the four `PROJECTION_METHODS` is drawn —
+24 endpoints x 4 methods would be 96 panels, and UMAP is the layout step 09's pathogen figures are read
+from, so the two are directly comparable. The engine takes the method as an argument if others are wanted.
+**Direction — which end is "most toxic":** all 24 endpoints are ranked **highest-first**
+(`TOX_RANK_DESCENDING`). For the 23 classification endpoints the score is the predicted probability of
+the toxic/active class, so this is direct. `ld50_zhu` is the one regression endpoint and the one genuine
+ambiguity: eos7m30 emits it in `log(1/(mol/kg))`, where the reciprocal inverts the dose scale, so a
+higher value is a *lower* LD50 and therefore more acutely toxic. Note that the eos7m30 column metadata
+labels it `direction: low`, which describes the underlying LD50 dose rather than the transformed value
+actually emitted — **the two disagree, and this was resolved in favour of highest-first by user sign-off**,
+corroborated by its positive Spearman correlation (+0.21 to +0.30) with all six independently-trained
+cytotoxicity models (eos42ez x3, eos3le9 x2, eos3dys) on a 150k-compound sample.
+**Score ranges of each top 1000 are printed to stdout** — worth reading before interpreting a panel, as
+the endpoints are very unevenly saturated: `dili`'s top 1000 spans 0.996-0.999 and `sr_are`'s 0.964-1.000
+(the cutoff separates almost nothing), whereas `nr_ar_lbd`'s spans 0.393-0.863.
+**Memory:** the ~720 MB step-12 cytotox matrix is streamed in chunks reading `key` + the 24 score columns only
+(never the `input` SMILES column, which is most of the file), with each endpoint's running top-N reduced
+after every chunk.
+
+## 13_curated_predictions.py
+Asks whether the property/resemblance columns carry any signal about pathogen activity. Treats every
+column of the step-10 (physchem), step-11 (abx) and step-12 (cytotox) blocks as a **predictor**, and every curated
+activity endpoint as a binary **target**, giving one performance value per (predictor, target) pair —
+**101 x 300 = 30,300** as re-run on 2026-08-06 (was 101 x 260 = 26,260 at 260 endpoints). Predictors by
+family: abx 55, cytotox 24, physchem 22 — now read from three separate per-family matrices (steps 10,
+11, 12) rather than two. Three figures, one per predictor family, each a box-with-jitter per predictor over its
+distribution across all 260 targets, sorted by median, with a chance line at 0.5. Analysis in
+`src/eval_predictor_performance.py`, figures in `src/plots_predictor_performance.py`; writes to
+`output/13_curated_predictions/`.
+**This is a descriptive association measure, NOT a trained model** — nothing is fitted, nothing is split,
+no random seed is involved. Every value is a rank statistic over the full library.
+**Target binarization:** `ACTIVITY_BINARIZE_TOP_N` = **1000** highest-scoring compounds = positive class,
+the remaining 1,354,109 = negative. A user-directed **rank cutoff on a fixed count, never a score
+threshold**, so prevalence is a constant 0.0738% across all targets. All 260 selected endpoints are
+asserted to be `direction == higher` — the engine raises rather than silently inverting a `lower` one.
+**Metric choice** is driven by the predictor's own value type, resolved on the **full column, never a
+subsample**: continuous -> AUROC, binary -> balanced accuracy. Both share a 0.5 chance baseline, which is
+the only reason they can share a y-axis; box colour encodes which is which. The full-column rule is not
+pedantry — `n_radical_electrons` is 0 for all but ~1 compound in 5,000 and classifies as *binary* on any
+sample, but as *continuous* (correctly) on the full column.
+**AUROC is reported RAW and may fall below 0.5**, so anti-correlation stays visible rather than being
+folded to its mirror image. This is load-bearing: `qed` has a median AUROC of **0.31**, i.e. it is a
+strong *inverse* predictor of activity, which folding would have disguised as moderate signal.
+**AUROC is computed by the Mann-Whitney rank-sum identity**, not `sklearn.roc_auc_score`: the predictor is
+ranked once (ties averaged, so the result is exact) and each target is then a 1000-element gather. 30,300
+direct sklearn calls over 1.35M rows would run for hours. Verified identical to sklearn (<= 1e-16) on ten
+real (predictor, target) pairs plus synthetic no-tie/heavy-tie cases.
+**Missing values — nothing imputed, nothing dropped library-wide.** Two independent cases, both signed
+off and both recorded in the outputs: (1) one *target*, `eos4zfy:maip_score`, has 15 unscored compounds —
+an unscored compound cannot be claimed to be in the top 1000, so it is ineligible for the positive class
+and stays negative; (2) eleven *predictors* (all `eos6ojg`) share the same 6 unscored compounds and are
+evaluated **pairwise-complete** over 1,355,103, with `n_compounds`/`n_unscored` in the summary CSV.
+Filling 0 was rejected — these are similarity counts, where 0 asserts "no similar antibiotic found".
+**Degenerate predictors give NaN, never 0.5:** four `eos19mt` flags (`arsenic_cpds`,
+`b_lactamase_inhibitors`, `lipopeptides`, `polypeptides`) are all-zero library-wide, so balanced accuracy
+is undefined; they account for all 1,040 NaN values and appear as empty slots on the abx figure rather
+than as chance-level boxes.
+**`same_model` flag:** `eos3dys` supplies 2 cytotoxicity predictors *and* 20 of the 260 targets, so those
+40 pairs share training data and are not independent evidence. They are kept and flagged in
+`13_predictor_performance.csv` (exactly 40 rows) for exclusion downstream.
+**Fourth figure — the activity endpoints as predictors of each other**
+(`13_performance_activity_by_organism`, from `13_activity_self_performance.csv`). Same machinery with
+activity on both sides: each endpoint's **raw, un-binarized** score as the predictor against every
+endpoint's top-1000 binarized version as the target — 260 x 260 = 67,600 AUROCs. All activity endpoints
+are continuous, so AUROC applies throughout with no metric selection. The x-axis groups by the
+**predictor** endpoint's organism (56 organisms), and points are coloured by whether the target endpoint
+belongs to the same organism.
+**Self-pairs are excluded from the figure**, kept in the CSV under a `self_pair` flag. An endpoint against
+its own binarization is 1.0 by construction — the top 1000 of a score *are* its 1000 highest values — so
+it measures nothing and would add one guaranteed-perfect point to every box. It is retained as a
+correctness check: the 260 self-pairs come back at 0.999952-1.000000, the sub-1.0 values being score ties
+at the top-1000 boundary (tied compounds straddling the cutoff), not an error.
+**Same-organism vs cross-organism is the distinction the figure exists to make** (6,334 vs 61,006 pairs
+after removing self-pairs). Two endpoints of one pathogen agreeing is model self-consistency; an endpoint
+scoring highly against *unrelated* pathogens is a different claim entirely. Note that the **41 organisms
+with a single selected endpoint have no same-organism pairs at all** once self-pairs are removed, so
+their boxes are cross-organism only and are not comparable to the multi-endpoint organisms on that axis.
+**Point subsampling:** each organism box pools (its endpoints x 259 targets), reaching ~16,500 points for
+*P. falciparum*, so the jittered overlay is capped at 400 points per colour, seeded with `RANDOM_SEED`.
+The box itself is computed from **all** values, not the subsample.
+**Fifth figure — the 15 pathogens of interest, consensus models collapsed**
+(`13_performance_pathogen_subset`, from `13_pathogen_subset_self_performance.csv`). The same
+activity-vs-activity block restricted to `config/pathogens_of_interest.csv` and with each ChEMBL
+antimicrobial model reduced to its single `consensus_score` column: **215 endpoints -> 59** (12 consensus,
+47 single) across all 15 pathogens, so 59 x 59 = 3,481 pairs. One box per endpoint, ordered by pathogen
+(pathogens by median, endpoints by median within), labelled `{pathogen} - {endpoint}`.
+**Why collapse:** a single ChEMBL model contributes up to 52 highly correlated sub-endpoints (one per
+source assay) — *P. falciparum*'s eos4an7 alone had 52 of the 260 — which dominate any pooled view by
+count alone. Where a model publishes a consensus column that column *is* its headline score; where it
+never had more than one sub-model there was nothing to take a consensus over (`eos7iak`, `eos9eyo`,
+`eos5qya`), so its single endpoint is kept as-is.
+**The rule is applied per (model_id, organism), not per model** — `eos3dys` spans six organisms and has
+no consensus column, so each of its organisms keeps its own endpoints.
+**Organism matching is an explicit alias map** (`PATHOGEN_ORGANISM_ALIASES`), never a genus substring:
+the two configs spell `Campylobacter`/`Campylobacter spp` and `Enterobacter`/`Enterobacter spp`
+differently, while substring matching would wrongly capture *C. glabrata* for *C. albicans* and
+*S. parasanguinis*/*S. salivarius* for *S. pneumoniae* — all distinct organisms in the curation.
+**Colour is a secondary cue only.** Every box is identified on the axis, because
+`plotting_colors.distinct_colors` supplies only 9 substantive hues and explicitly warns that a
+15-swatch legend is unreadable at panel size. Same-organism points are drawn larger and more opaque than
+cross-organism ones, since colour is already carrying pathogen identity here.
+**Panel height is 4 cells, not 2** (the other step-13 panels): the two-part tick labels need roughly half
+the panel height at 59 categories, and at 2 cells the boxes collapsed into a strip along the top.
+
+**Sixth figure — the curated 12 predictors, three families in one panel**
+(`13_performance_curated_predictors`, from `13_curated_predictor_performance.csv`). A user-directed
+shortlist of the 101 property columns (`CURATED_PREDICTORS` in `src/default.py`) scored against the same
+59 consensus-collapsed pathogen endpoints as the fifth figure — 12 x 59 = 708 pairs. One box per
+predictor, families in contiguous blocks and sorted by median within each, coloured physchem /
+cytotox / abx.
+**Predictors:** physchem `mw, tpsa, clogp`; cytotox `cytotoxicity_hepg2, cytotoxicity_hskmc,
+cytotoxicity_imr90, cytotoxicity_ic50, ic50_hepg2_72h_5um, ic50_hepg2_72h_10um`; abx `abx_score,
+num_sim_0_5_all, num_sim_0_5_subset`. Declared as bare column names and resolved against the
+`{family}__{model_id}__{column_name}` names at read time, so a model version bump needs no edit here.
+**All twelve are continuous, so the whole panel is one AUROC scale** — the engine asserts this rather
+than assuming it, and raises if a binary column is ever added to the shortlist. This is what the
+per-family figures cannot do: their abx block mixes AUROC and balanced accuracy, which must not be
+pooled on one axis. It is also why colour can be a primary encoding here (3 families, a legible
+3-entry legend) rather than the secondary cue it is forced to be at 15 pathogen groups.
+**`same_model` flag:** `cytotox__eos3dys__cytotoxicity_ic50` shares a model with the eos3dys activity
+targets, giving 16 non-independent pairs, flagged in the CSV.
+
+### Config changes: *M. tuberculosis* endpoint selection
+
+*M. tuberculosis* is one of the 15 pathogens of interest but at the last commit had **all 35 of its
+`eos43d6` columns marked `No`**, plus every other MTB bioactivity endpoint — so it was absent from every
+activity figure. It was also the only ChEMBL pathogen model not fully selected (1/35, against 52/52 for
+`eos4an7`, 19/19 for `eos8lcw`, 13/13 for `eos5eya` and so on). Fixed in two user-directed steps:
+
+1. `eos43d6,...,consensus_score` flipped `No -> Yes`, taking the selection **260 -> 261**. A minimum fix
+   to get MTB into the figures at all.
+2. **All remaining MTB `bioactivity` endpoints selected, with two exceptions** (2026-08-06),
+   taking the selection **261 -> 300**. MTB now carries **40 endpoints**, second only to *P. falciparum*
+   (64). Per model:
+
+| model | endpoints | selected | rationale |
+|---|---|---|---|
+| `eos43d6` antimicrobial-activity-mtuberculosis | 35 | **35/35** | Now consistent with every other pathogen model, which are all 100% selected. |
+| `eos9ivc` anti-mtb-seattle | 3 | **3/3** | Whole-cell MIC50/MIC90/WCS endpoints. |
+| `eos46ev` chemtb | 1 | **1/1** | Whole-cell activity probability. |
+| `eos7kpb` h3d-virtual-screening-cascade-light | 2 | **1/2** — `mtb_norm` only | The normalised column is kept, the raw `mtb` dropped. |
+| `eos24jm` qcrb-tb | 1 | **0/1** | **Target-based** (QcrB inhibition), not whole-cell activity — a different claim from every other endpoint in the block. |
+
+**`eos7kpb` now uses opposite conventions across organisms, and this is unresolved.** For MTB the
+normalised column is selected and the raw one is not; for *P. falciparum* the raw `pf_k1` and `pf_nf54`
+are selected and their `_norm` twins are not. Same model, same config, two rules. Either the MTB rows or
+the *P. falciparum* rows should change so the model is read one way — flagged, not silently fixed, since
+which convention is right is a scientific call.
+
+**Permeability endpoints stay `No`, and that is not an MTB-specific decision.** MTB's 9 permeability
+endpoints (`eos1lb5` x6, `eos3ujl`, `eos5jv3`, `eos8d8a`) are excluded under the config-wide rule that
+only `bioactivity` rows are ever selected: permeability is 0/22 across all organisms, as are ADME 0/14,
+toxicity 0/6, class_prediction 0/8, structural_alert 0/7 and physicochemical 0/2.
+
+**`eos9ivc` (anti-mtb-seattle) arrived after the step-07 cache was built.** Its predictions were
+missing when the cache was written and were downloaded on 2026-08-06 as
+`annotation_preds_ref_library/eos9ivc_v2.csv` (1,355,109 rows, all 3 columns continuous in [0, 1], 0
+missing). It needs no registration beyond this config — *M. tuberculosis* is already in
+`config/pathogens_of_interest.csv`, so its columns name themselves `mtuberculosis__eos9ivc__*`.
+
+**Downstream effect — step 07 DOES need a rebuild, and 08/09/15/16 after it.** The cache's
+"contains every referenced endpoint, `Yes` and `No`" guarantee only covers models whose prediction
+files existed at build time. Verified against `07_score_matrix_full.parquet` (393 columns): of the 300
+now-selected endpoints, **297 are cached and 3 are missing — exactly `eos9ivc`'s**
+`mic50_10um`, `mic90_10um`, `wcs_70percent`. So the eos43d6 flip alone would have needed no rebuild, but
+adding eos9ivc does. Step 07 skips on file existence, not on content, so it will **not** notice by
+itself: the 1.5 GB parquet and the five CSVs (25 GB total, ~2 h to regenerate) have to be removed for it
+to rebuild.
+
+**Every downstream count in steps 08, 09, 15 and 16 below was measured under the 260-endpoint
+selection** and is stale until those steps are re-run — including the 260x260 / 67,600-AUROC matrix
+shapes, the `min5` 209-of-260 coverage, and the 101 x 260 = 26,260 figure. Those numbers are left as
+measured rather than rewritten to 300, since the new values are not known until the re-run happens.
+
+## 14_auroc_matrix.py
+Collapses each organism's activity endpoints into **one score per organism**, then draws the AUROC
+matrix: **15 organism rows x 27 columns** (the same 15 organism aggregates, then cytotoxicity 6, abx
+resemblance 3, physchem 3 = 405 cells). Each cell carries its printed AUROC. Assembly and computation in
+`src/eval_auroc_matrix.py`, figure in `src/plots_auroc_matrix.py`; writes to `output/14_auroc_matrix/`.
+Replaces an earlier per-endpoint 61 x 73 version, which was too dense to read: a pathogen contributed up
+to 13 correlated endpoints, so its band said more about how many assays it has than about the pathogen.
+**The merge:** an organism's endpoint columns are scaled to **percentile rank** within the full library
+(`ORGANISM_MERGE_METHOD = "rank_pct"`) and then **averaged** (`ORGANISM_MERGE_AGG = "mean"`). Scaling
+*before* aggregating is the point — raw scores from different models sit on unrelated ranges, and
+averaging them directly would weight whichever endpoint has the widest one. Endpoints are the
+consensus-collapsed 15-pathogen set (61 endpoints; 1-13 per organism).
+**Two properties of the merge, recorded rather than corrected** — both follow directly from merging the
+endpoints as selected: (1) **five organisms have exactly one endpoint** (Campylobacter, Enterobacter,
+*E. faecium*, *H. pylori*, *S. pneumoniae*), so nothing is merged and their score IS that endpoint's
+percentile rank — their row is not the same kind of quantity as *E. coli*'s 11-endpoint mean; (2) a ChEMBL
+`consensus_score` is itself an aggregate over sub-models, so averaging it with individual assay endpoints
+gives it equal weight to a single assay.
+**Source:** step 07's **parquet cache**, re-scaled here — not `07_score_matrix_named_rankpct.csv`, which
+is stale (260 columns, predating two config changes) and lacks several of these endpoints.
+Step 07's own mean-rank section rebuilds from the parquet for the same reason.
+**Colour: discrete 0.1-wide bins from 0.2 to 1.0, on a DIVERGING scale pinned to chance**
+(`DivergingColormap("crimson_cobalt")`, reversed to cool-low / warm-high). Cool = below 0.5, near-white
+at 0.5, warm = above. A diverging map is the right family here **because 0.5 is a real neutral with data
+on both sides**: 44 of the 405 cells (10.9%) fall below chance, down to 0.262, meaning those predictors
+rank actives *below* inactives — signal with a direction, not absence of signal. It would be the wrong
+choice for a quantity with no natural centre, where the pale middle would land on an arbitrary value.
+**The arms are unequal** (0.24 below chance, 0.50 above), so bin midpoints are mapped through a
+two-slope normalisation that pins 0.5 to the colormap's centre. Sampling linearly across the whole range
+instead would put the white point at 0.6 and quietly assert that 0.6 is chance.
+**Nothing is clipped** — the 0.2 floor sits below the matrix minimum of 0.262. This reverses an earlier
+clip-at-0.5 setting, which flattened all 44 below-chance cells into one grey bin.
+*Colour history, since the choice was iterated:* `SpectralColormap("npg")` was tried first and rejected —
+its hues carry no rank, so magenta (1.0) vs blue (0.8) vs red (0.6) gave a reader no way to tell high
+from low, and red read as "hot" while sitting near the bottom. A monotonic `ContinuousColormap("plum")`
+fixed the ordering but was visually poor. The diverging scale solves both and adds the below-chance arm.
+**Gridlines are off.** stylia's article style draws a grid; over a filled heatmap it lands on top of the
+cells and strikes through the printed values.
+**Peripheral tracks:** block category, organism class and predictor model on the top edge; organism class
+on the left. No swatch legend (user-directed) — the block track labels itself in place and the organisms
+are named on both axes, but note the narrow class bands (Fungi, Protozoa, Helminths, Mycobacteria) are
+unkeyed colour only. Track axes **share x/y with the grid**, which is what guarantees cell alignment.
+### Second view: shared actives (`14_overlap_matrix`)
+The same 15 x 27 axes and annotation tracks, a different quantity: **how many of the row organism's
+1000 actives fall in the column's own top 1000** (0-1000). AUROC asks "does this predictor RANK the
+row's actives highly across the whole library"; this asks how many of the very same molecules it puts
+at the top. A predictor can do the first well without doing the second. Values in
+`14_overlap_matrix.csv`.
+**A raw count, not Jaccard.** Both sets have exactly 1000 members, so `J = i / (2000 - i)` is a
+monotone re-expression of the same number and orders the matrix identically — the count is the one a
+reader can act on ("724 of the 1000 shared"). **The measure is symmetric**, so the bioactivity block is
+a symmetric matrix, unlike AUROC's.
+**Bins are NON-UNIFORM** (`OVERLAP_MATRIX_BINS` = 0, 1, 10, 25, 50, 100, 200, 400, 750), tuned to a
+heavily skewed distribution: off-diagonal counts run 0-724 with a **median of 3**, and two random
+1000-compound sets out of 1,355,109 would share ~0.7 by chance. The boundary at 1 is the informative
+one — it separates the 33% of cells sharing **no** compound at all from those sharing some. No bin
+holds more than a third. The colourbar uses **uniform** spacing so the narrow low bins stay readable.
+**Colour is SEQUENTIAL cobalt**, not diverging: a count's neutral is 0, at the end of the scale rather
+than in the middle, so there is nothing to diverge around. Matches the overlap heatmaps in step 08 and
+the EU OpenScreen validation.
+
+### Both figures carry a mean row, and both blank their diagonal
+**Mean row.** A separate one-row band under each grid gives the **column-wise mean**, i.e. how a
+predictor does averaged over all 15 organisms. It is kept OUTSIDE the main axes rather than added as a
+16th row, so it can never be mistaken for another organism, and it shares the x axis so it stays
+column-aligned. It also carries the column tick labels, since appending a band below the grid occupies
+exactly where those labels would otherwise sit.
+**The diagonal is excluded from the mean.** Those cells are an entity against itself — 1.00 AUROC and
+1000/1000 shared, by construction — so including them would inflate every bioactivity column by a
+guaranteed maximum.
+**The diagonal is blanked in both grids**, drawn as a **dashed cell**, which distinguishes "deliberately
+not shown" from "no value". For the overlap matrix this also frees the scale: the largest real overlap
+is 724, and keeping the diagonal at 1000 would spend colour range on a cell that cannot be anything
+else. Follows the convention in step 08 and `ActiveOverlapHeatmapPlot`. **The true values, diagonals
+included, are still in both CSVs** — blanking is a display choice, and the build-time diagonal assert
+still runs on the unmodified matrix.
+
+**Three build-time checks**, each of which would otherwise fail silently and still look plausible: every
+aggregate column's mean must be ~0.5 (a mean of percentile ranks must be; catches scaling along the wrong
+axis), the diagonal must be 1.0 across all 15 (an organism against its own binarization; doubles as a
+transpose test), and no cell may be missing. The script exits rather than drawing if any fails.
+**Excluded:** 3 `eos9ivc` *M. tuberculosis* endpoints, absent from the step-07 cache, which predates their
+prediction file being staged. To include them, remove the parquet and re-run `07_score_matrices.py`.
+
+### Stale outputs (as of this run)
+`config/08_endpoint_selection.csv` now selects **300** endpoints (up from 260: all 35 eos43d6 M. tuberculosis
+rows plus eos46ev/eos7kpb/eos9ivc).
+
+**Re-run and verified on 2026-08-06:**
+- `output/07_score_matrices/07_score_matrix_full.parquet` — rebuilt, 1,355,109 x 395 endpoints, 268.6 s.
+  All 300 selected and all 395 referenced endpoints present; the diff against the previous cache is
+  exactly the three `eos9ivc` columns added and nothing lost.
+- `output/07_score_matrices/07_mean_rank_*` + `07_mean_rank_distribution` — regenerated at 300 endpoints
+  by the merged mean-rank section.
+- `output/08_pathogen_jaccard/` — all three Jaccard matrices rebuilt at **300 x 300**, both `min2` and
+  `min5` aggregations and all six figures refreshed.
+
+**Still stale:**
+- The five scaled matrices in `output/07_score_matrices/` hold **260** columns. No code reads them (see
+  the note under step 14), so they were deliberately not regenerated — doing so costs ~1 h 54 m of CSV
+  writing. **Delete one to rebuild all five.**
+- Steps 15 and 16 were last run under the 260-endpoint selection and recompute from the parquet with
+  nothing to delete, so they simply need re-running.
+- Step 01 is stale for an unrelated reason — the metadata refresh (Ready 208 -> 214).
