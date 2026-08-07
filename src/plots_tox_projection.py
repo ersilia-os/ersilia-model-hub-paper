@@ -32,15 +32,19 @@ GRID_COLS = 6
 
 
 class ToxicityProjectionGridPlot(GridPlot):
-    """One panel per toxicity endpoint, all sharing one projection layout and background.
+    """One panel per endpoint, all sharing one projection layout and background.
 
-    Every panel carries the same silver full-library density, so panels are comparable to each
-    other and to step 10's pathogen panels at a glance. The overlay is the endpoint's top-N points
-    only, never a continuous score, so no colour scale is needed — just the one marker key.
+    Every panel carries the same silver full-library density — step 09's grid, reused by steps 10,
+    11 and 12 — so panels are comparable across all four families at a glance. The overlay is the
+    endpoint's top-N points only, never a continuous score, so no colour scale is needed, just the
+    one marker key.
+
+    Despite the name this class is **family-agnostic** and is also used by step 10's physchem
+    panels; ``name`` and ``legend_label`` are the only things that differ between callers.
     """
 
     def __init__(self, method, background, top_n_table, endpoints, top_n=PROJECTION_TOP_N,
-                 cols=GRID_COLS):
+                 cols=GRID_COLS, name=None, legend_label=None):
         n_bins = int(max(background["bin_i"].max(), background["bin_j"].max()) + 1) \
             if len(background) else 0
         self.bg_arr = _pivot(background, "n_compounds", n_bins) if n_bins else None
@@ -58,11 +62,12 @@ class ToxicityProjectionGridPlot(GridPlot):
                 "y": g[f"{method}_y"].to_numpy() if len(g) else np.array([]),
             })
 
-        self.build_grid(items, cols=cols, name=f"12_{method}_top{top_n}_toxicity",
+        self.build_grid(items, cols=cols,
+                        name=name or f"12_{method}_top{top_n}_toxicity",
                         panel_fn=self._panel, edge_xlabel=f"{method.upper()} 1",
                         edge_ylabel=f"{method.upper()} 2")
         if self.is_available:
-            marker_legend(self.ax, [{"label": f"top {top_n} most toxic",
+            marker_legend(self.ax, [{"label": legend_label or f"top {top_n} most toxic",
                                      "color": POINT_COLOR, "markersize": 3}])
 
     def _panel(self, ax, item, color, xlabel, ylabel):
@@ -91,11 +96,15 @@ def _read(output_dir, fname, **kw):
     return pd.read_csv(path, **kw) if os.path.exists(path) else pd.DataFrame()
 
 
-def save_tox_projection_figures(output_dir, endpoints, method=TOX_PROJECTION_METHOD,
-                                top_n=PROJECTION_TOP_N):
-    """Build the step-12 toxicity figure from the summary CSVs in ``output_dir`` and record its footprint
-    in ``figure_cells.json``."""
-    background = _read(output_dir, f"12_{method}_background.csv")
+def save_tox_projection_figures(output_dir, endpoints, background_path,
+                                method=TOX_PROJECTION_METHOD, top_n=PROJECTION_TOP_N):
+    """Build the step-12 toxicity figure and record its footprint in ``figure_cells.json``.
+
+    ``background_path`` is step 09's ``09_{method}_background.csv`` — the same full-library density
+    grid the pathogen (step 09) and abx (step 11) panels sit on, reused rather than recomputed so all
+    three families are directly comparable.
+    """
+    background = pd.read_csv(background_path) if os.path.exists(background_path) else pd.DataFrame()
     top_n_table = _read(output_dir, f"12_top{top_n}_per_endpoint.csv")
     footprints = {}
     plot = ToxicityProjectionGridPlot(method, background, top_n_table, endpoints, top_n=top_n)

@@ -826,24 +826,44 @@ matrix. **Defines** five matrices, one row per compound and one column per `sele
 (**300** as the config stands), but by default **writes only the parquet cache** behind them plus the
 mean-rank outputs below. Engine in `src/eval_correlations.py`; writes to `output/07_score_matrices/`.
 
-**The five scaled CSVs are opt-in (`--write-matrix-csvs`), and off by default.** They are ~23.5 GB of
-text and ~1 h 54 m of pure serialisation, and **no code in this repo reads them** — every downstream
-step (08–14) re-derives its own scaling from `07_score_matrix_full.parquet`, which is columnar and
-~15x smaller. `src/eval_auroc_matrix.py` says so explicitly at its top. They exist as human-readable
-exports only, so a rebuild no longer pays for them unless asked:
+**The five CSVs are opt-in (`--write-matrix-csvs`), and off by default.** They are ~23.5 GB of text and
+~1 h 54 m of pure serialisation, and **no code in this repo reads them** — every downstream step
+(08–14) re-derives what it needs from `07_score_matrix_full.parquet`, which is columnar and ~15x
+smaller. `src/eval_auroc_matrix.py` says so explicitly at its top. They exist as human-readable exports
+only, so a rebuild no longer pays for them unless asked:
 
 ```
 python 07_score_matrices.py                      # parquet cache + mean-rank figure  (~5 min)
 python 07_score_matrices.py --write-matrix-csvs  # also the five CSV exports        (+~1 h 54 m)
 ```
 
-| matrix | transform |
-|---|---|
-| named | raw scores, columns renamed `{pathogen_code}__{model_id}__{column_name}` |
-| z-score | `(x - mean) / std` per column |
-| rank-percentile | percentile rank within each column, bounded [0, 1] |
-| z-score + L2 row-norm | each compound's profile divided by its Euclidean norm |
-| rank-percentile + L1 row-norm | each compound's profile divided by its absolute sum (rows sum to 1) |
+**Measured, so the tradeoff is reviewable rather than asserted** (2026-08-07, this hardware): building
+the base matrix from the parquet takes **0.74 s**, deriving z-score + L2 row-norm **3.5 s** and
+rank-percentile + L1 row-norm **51.1 s** — **55 s** for all three. Reading the three equivalent CSVs
+would take **~84 s** at the measured 0.181 GB/s. So deriving is *modestly* faster per run, not
+dramatically; what actually decides it is the **one-off ~1 h 54 m write** to save ~29 s per run, plus
+the drift risk — a materialised copy can fall out of sync with the config, and did (the CSVs sat at 260
+columns while the selection said 300). The parquet *is* the saved intermediate; the CSVs were a second,
+redundant copy of it in a slower format.
+
+**Only 3 of the 5 are ever consumed**, and step 08 is the only consumer — it re-derives them in memory
+rather than reading any CSV. The other two are exports for a human, not pipeline inputs:
+
+| matrix | transform | used downstream? |
+|---|---|---|
+| named | raw scores, columns renamed `{pathogen_code}__{model_id}__{column_name}` | **yes** — step 08 `baseline` |
+| z-score | `(x - mean) / std` per column | no |
+| rank-percentile | percentile rank within each column, bounded [0, 1] | no |
+| z-score + L2 row-norm | each compound's profile divided by its Euclidean norm | **yes** — step 08 `zscore_l2rownorm` |
+| rank-percentile + L1 row-norm | each compound's profile divided by its absolute sum (rows sum to 1) | **yes** — step 08 `rankpct_l1rownorm` |
+
+**Why the two column-scaled-only variants are unused:** top-N Jaccard depends only on each column's
+internal ranking, and both column scalings are strictly increasing *per column*, so neither can change
+a column's top-1000 set — their Jaccard matrices are identical to `baseline`'s. Row normalisation is
+different: it mixes values *across* a row, so it genuinely reorders each column, which is why the two
+`*_rownorm` variants are real inputs. Step 08 asserts this rather than assuming it (see its section).
+Keeping the two in `VARIANTS` is deliberate: a plain z-score or percentile table is the interpretable
+thing to hand someone, which is why they are behind the flag rather than deleted.
 
 **Key decisions, for review:**
 - **Which endpoints:** only `selected == Yes` rows of the manually curated
@@ -921,24 +941,40 @@ Figure in `src/plots_matrix_analyses.py`; writes the 260x260 Jaccard matrices (r
 a per-pathogen summary CSV, and PNG + PDF to `output/08_pathogen_jaccard/`.
 **Key decisions, for review:**
 - **Cutoff: top 1000** of 1,355,109 compounds per column — user-directed.
-- **Minimum endpoints per pathogen: 5** (default; a command-line argument, so several thresholds can be
-  run and compared rather than one overwriting another — outputs are suffixed `min<K>`). A pathogen must
-  have at least K endpoints **of its own**; those below are removed from the analysis *entirely*, ceasing
-  to be different-pathogen partners too, not merely losing their own box. **User-directed, not fitted.**
-  Re-run 2026-08-06 on the 300-endpoint selection. At `min5`: **249 of 300 columns, 12 of 57 pathogens**
-  (45 pathogens / 51 columns dropped). At `min2` (the weakest defensible bar, 2 endpoints being the
-  minimum for any same-pathogen pair to exist): **259 columns, 16 pathogens** — but `bfragilis` and
-  `cneoformans` rest on a single pair each and `ngonorrhoeae` on three, which is why 5 is the more
-  defensible default. `bfragilis`'s single pair is why it tops the `min2` baseline ranking at 0.5026,
-  five times the next value; that is one pair, not a finding.
-  **Both thresholds must be passed explicitly** (`python 08_pathogen_jaccard.py 2 5`) —
-  `DEFAULT_MIN_COLUMNS` is `(5,)`, so a bare re-run refreshes `min5` and leaves the `min2` outputs
-  behind at whatever selection produced them. Previous figures were 209 of 260 columns / 11 of 56
-  pathogens at `min5`.
-- **Three matrix variants, not five.** Top-N Jaccard depends only on each column's own internal ranking,
-  and both column scalings are strictly increasing per column — so z-scoring and rank-percentiling cannot
-  change any column's top-1000 set. The unscaled and both scaled matrices give the same result, computed
-  once; only the row-normalized matrices change rankings. The script **asserts** this at runtime rather
+- **Scope: the 15 curated pathogens of interest** (`config/pathogens_of_interest.csv`), replacing the
+  former `min<K>`-endpoint thresholds on 2026-08-07 (user-directed). **254 of 300 columns, 15 of 57
+  pathogens**; the other 42 pathogens / 46 columns are removed *entirely*, ceasing to be
+  different-pathogen partners too, not merely losing their own box.
+  **This narrows the comparator and a caption must say so:** a pathogen's crimson box is now against
+  the other 14 priority pathogens only, **not** against all 57, so "specific to this pathogen" here
+  means "relative to the other priority pathogens". The old `min5` figure compared against every
+  pathogen that cleared the bar, including the gut-microbiome organisms.
+  **Two of the 15 have a single endpoint** (*Campylobacter*, *H. pylori*), so no same-pathogen pair
+  exists and they carry a crimson box only, with `same_median = NaN`. They are **kept, not dropped**:
+  for a pathogen on the priority list, having too little in the hub to assess is itself the result,
+  and hiding the row would hide it. The run prints them by name every time.
+  Superseded values, for reference: `min5` was 249 of 300 columns / 12 of 57 pathogens, `min2` 259 /
+  16, and at `min2` `bfragilis` topped the ranking at 0.5026 on a *single pair*.
+- **Pathogen codes: the two configs were aligned at source (2026-08-07).**
+  `config/08_endpoint_selection.csv` spelled two organisms `Campylobacter spp` / `Enterobacter spp`
+  while `config/pathogens_of_interest.csv` said `Campylobacter` / `Enterobacter`. The name lookup
+  therefore missed and `_pathogen_code` fell through to its mechanical fallback, coding them **`cspp`**
+  and **`espp`** — which both mislabelled two of the 15 in this figure and would have made a filter on
+  the config's `code` column silently drop them. The selection config was edited to match (7 rows), so
+  the codes are now `campylobacter` and `enterobacter` everywhere and every lookup is an **exact
+  match**. `default.PATHOGEN_ORGANISM_ALIASES`, which existed only to paper over this, was removed
+  along with its use in `src/eval_predictor_performance.py`.
+  **Do not reintroduce substring matching** if they ever diverge again: `Candida albicans` would
+  capture *C. glabrata*, and `Streptococcus pneumoniae` would capture *S. parasanguinis* and
+  *S. salivarius*. Fix the spelling instead. `pathogens_of_interest_nodes` **raises** if any of the 15
+  fails to resolve, so a future rename fails loudly rather than quietly shrinking the figure.
+- **Three matrix variants, not five — and this step is the only consumer of any of them.** The three are
+  `baseline` (step 07's *named*), `zscore_l2rownorm` and `rankpct_l1rownorm`; step 07's plain *z-score*
+  and *rank-percentile* variants are never used by anything. Top-N Jaccard depends only on each column's
+  own internal ranking, and both column scalings are strictly increasing per column — so z-scoring and
+  rank-percentiling cannot change any column's top-1000 set. The unscaled and both scaled matrices give
+  the same result, computed once; only the row-normalized matrices change rankings, because row
+  normalisation mixes values *across* a row. The script **asserts** this at runtime rather
   than assuming it, and the assertion earns its keep: baseline == rank-percentiled holds exactly, but
   baseline == z-scored comes back **False** — `(x - mean) / std` in float32 reorders near-tied values in
   exactly **one column of 300** (`lmajor__eos60mw__leishmania_mlp`, 155 of its top-1000 members shift),
@@ -949,10 +985,12 @@ a per-pathogen summary CSV, and PNG + PDF to `output/08_pathogen_jaccard/`.
   so any comparison reporting differences below that is reading float noise — e.g. from a CSV round-trip
   rather than the in-memory arrays the assertion uses.
 - **Same-model pairs are included** (the literal "each column against all others"). This matters at
-  pathogen level: at `min5`, **3 of the 12 surviving pathogens** (`espp`, `spneumoniae`, `efaecium`) have
+  pathogen level: **3 of the 15** (`enterobacter`, `spneumoniae`, `efaecium`) have
   `n_same_pairs_excl_same_model == 0` — every same-pathogen pair they have comes from one model's multiple
   output columns, so their box is that model agreeing with itself and says nothing about cross-model
-  specificity. `espp` tops the `min5` baseline ranking on exactly that basis. The summary CSV carries
+  specificity. `enterobacter` tops the baseline ranking (0.1105) on exactly that basis, so **the top row
+  of the figure is an artifact, not a finding** — the first row with genuine cross-model signal is
+  `ecoli` at 0.0471 with 167 cross-model pairs. The summary CSV carries
   `same_median_excl_same_model` alongside `same_median`; read them together.
 - **Linear x-axis** (user-directed). Values bunch near zero so the different-pathogen boxes render as thin
   slivers, but exact-zero pairs are shown rather than silently dropped by a log axis. Nothing is filtered.
@@ -1210,7 +1248,7 @@ never had more than one sub-model there was nothing to take a consensus over (`e
 **The rule is applied per (model_id, organism), not per model** — `eos3dys` spans six organisms and has
 no consensus column, so each of its organisms keeps its own endpoints.
 **Organism matching is an explicit alias map** (`PATHOGEN_ORGANISM_ALIASES`), never a genus substring:
-the two configs spell `Campylobacter`/`Campylobacter spp` and `Enterobacter`/`Enterobacter spp`
+the two configs spelled `Campylobacter`/`Campylobacter spp` and `Enterobacter`/`Enterobacter spp` (aligned 2026-08-07)
 differently, while substring matching would wrongly capture *C. glabrata* for *C. albicans* and
 *S. parasanguinis*/*S. salivarius* for *S. pneumoniae* — all distinct organisms in the curation.
 **Colour is a secondary cue only.** Every box is identified on the axis, because
@@ -1285,10 +1323,9 @@ adding eos9ivc does. Step 07 skips on file existence, not on content, so it will
 itself: the 1.5 GB parquet and the five CSVs (25 GB total, ~2 h to regenerate) have to be removed for it
 to rebuild.
 
-**Every downstream count in steps 08, 09, 15 and 16 below was measured under the 260-endpoint
-selection** and is stale until those steps are re-run — including the 260x260 / 67,600-AUROC matrix
-shapes, the `min5` 209-of-260 coverage, and the 101 x 260 = 26,260 figure. Those numbers are left as
-measured rather than rewritten to 300, since the new values are not known until the re-run happens.
+**Obsolete as of the 2026-08-06 rebuild:** steps 07-14 were all re-run at 300 endpoints, so the counts
+in their sections are current unless explicitly labelled historical. Any bare `260` / `67,600` /
+`26,260` still in this file is a superseded value kept for comparison, not a live one.
 
 ## 14_auroc_matrix.py
 Collapses each organism's activity endpoints into **one score per organism**, then draws the AUROC
@@ -1371,26 +1408,42 @@ still runs on the unmodified matrix.
 aggregate column's mean must be ~0.5 (a mean of percentile ranks must be; catches scaling along the wrong
 axis), the diagonal must be 1.0 across all 15 (an organism against its own binarization; doubles as a
 transpose test), and no cell may be missing. The script exits rather than drawing if any fails.
-**Excluded:** 3 `eos9ivc` *M. tuberculosis* endpoints, absent from the step-07 cache, which predates their
-prediction file being staged. To include them, remove the parquet and re-run `07_score_matrices.py`.
+**Nothing is excluded any more.** This previously dropped 3 `eos9ivc` *M. tuberculosis* endpoints that
+were absent from a step-07 cache built before their prediction file was staged; the rebuilt parquet
+carries all three, and step 14 now reports 405 cells with none missing. The guard that caused it is
+still live and still worth knowing about: step 14 intersects the selection with the columns actually in
+the cache (`available=cached`) and **silently proceeds with fewer endpoints** rather than failing, so a
+stale cache shows up only as a lower endpoint count in the log.
 
-### Stale outputs (as of this run)
-`config/08_endpoint_selection.csv` now selects **300** endpoints (up from 260: all 35 eos43d6 M. tuberculosis
-rows plus eos46ev/eos7kpb/eos9ivc).
+### Rebuild status
 
-**Re-run and verified on 2026-08-06:**
-- `output/07_score_matrices/07_score_matrix_full.parquet` — rebuilt, 1,355,109 x 395 endpoints, 268.6 s.
-  All 300 selected and all 395 referenced endpoints present; the diff against the previous cache is
-  exactly the three `eos9ivc` columns added and nothing lost.
-- `output/07_score_matrices/07_mean_rank_*` + `07_mean_rank_distribution` — regenerated at 300 endpoints
-  by the merged mean-rank section.
-- `output/08_pathogen_jaccard/` — all three Jaccard matrices rebuilt at **300 x 300**, both `min2` and
-  `min5` aggregations and all six figures refreshed.
+`config/08_endpoint_selection.csv` selects **300** endpoints (up from 260: all 35 eos43d6
+*M. tuberculosis* rows plus eos46ev/eos7kpb/eos9ivc).
 
-**Still stale:**
-- The five scaled matrices in `output/07_score_matrices/` hold **260** columns. No code reads them (see
-  the note under step 14), so they were deliberately not regenerated — doing so costs ~1 h 54 m of CSV
-  writing. **Delete one to rebuild all five.**
-- Steps 15 and 16 were last run under the 260-endpoint selection and recompute from the parquet with
-  nothing to delete, so they simply need re-running.
-- Step 01 is stale for an unrelated reason — the metadata refresh (Ready 208 -> 214).
+**Steps 07-14 were deleted and rebuilt from scratch on 2026-08-06** (27 GB -> 3.1 GB, 11 m 20 s,
+all eight exit 0). Every step's own internal assertion passed and every value reproduced the
+incremental runs, so the from-scratch result is consistent, not merely successful:
+
+| step | time | verification |
+|---|---|---|
+| 07 | 4m32s | parquet 1,355,109 x 395, **0 models skipped**; mean rank 0.5000 / SD 0.1289 |
+| 08 | 2m07s | 3 Jaccard matrices at 300x300 (re-run 2026-08-07: 15 pathogens of interest, 254/300 columns) |
+| 09 | 35s | 4 background grids; 15 pathogens at exactly 1000/1000 |
+| 10 | 18s | 1,355,109 x 22, 0 missing |
+| 11 | 62s | 55 endpoints; **16 `figure_cells` entries** (1 grid + 15 overlap) |
+| 12 | 43s | 24 endpoints + merged toxicity projection |
+| 13 | 89s | key order verified across 4 sources; 300 targets x 101 predictors = 30,300 pairs |
+| 14 | 34s | **diagonal exactly 1.0**, organism-score column means 0.5000, 15 x 27 |
+
+Two things only a from-scratch run surfaced:
+- **`13_excluded_targets.csv` is correctly absent** — it is written only when a selected endpoint is
+  missing from the parquet, which was true when the cache lacked `eos9ivc`. The file had survived
+  every rename since as a stale artifact. Step 13 writes **5** CSVs, not 6.
+- **1,200 of the 30,300 pairs are undefined** — the 4 constant-zero abx endpoints x 300 targets. A
+  constant column has no ranking, so no AUROC exists. Recorded, never imputed.
+
+**Not regenerated, by decision:** the five scaled matrix CSVs. Nothing reads them (only 3 of the 5
+would ever be consumed, all by step 08, which derives them in memory instead) and they cost ~1 h 54 m.
+Run `python 07_score_matrices.py --write-matrix-csvs` if they are wanted as exports.
+
+**Still stale:** step 01 only, for an unrelated reason — the metadata refresh (Ready 208 -> 214).

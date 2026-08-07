@@ -278,7 +278,7 @@ eos74km,antimicrobial-kg-ml,fungi,higher,,Fungi,,class_prediction,No
 eos74km,antimicrobial-kg-ml,gram_negative,higher,,Gram-negative bacteria,,class_prediction,No
 eos74km,antimicrobial-kg-ml,gram_positive,higher,,Gram-positive bacteria,,class_prediction,No
 eos74km,antimicrobial-kg-ml,acid_fast,higher,,Mycobacteria (acid-fast),,class_prediction,No
-eos7iak,antimicrobial-activity-campylobacter,chembl_dose_response_0,higher,Campylobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos7iak,antimicrobial-activity-campylobacter,chembl_dose_response_0,higher,Campylobacter,Gram-negative bacteria,wild-type,bioactivity,Yes
 eos7ike,entry-rules,glob,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
 eos7ike,entry-rules,primary_amine,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
 eos7ike,entry-rules,rb,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
@@ -380,12 +380,12 @@ eos8v1a,antimicrobial-activity-smansoni,chembl_single_point_0,higher,Schistosoma
 eos8v1a,antimicrobial-activity-smansoni,chembl_single_point_1,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
 eos8v1a,antimicrobial-activity-smansoni,chembl_single_point_2,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
 eos8v1a,antimicrobial-activity-smansoni,consensus_score,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
-eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_0,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_1,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_2,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_3,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos9bpi,antimicrobial-activity-enterobacter,chembl_single_point_0,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos9bpi,antimicrobial-activity-enterobacter,consensus_score,higher,Enterobacter spp,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_0,higher,Enterobacter,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_1,higher,Enterobacter,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_2,higher,Enterobacter,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,chembl_dose_response_3,higher,Enterobacter,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,chembl_single_point_0,higher,Enterobacter,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos9bpi,antimicrobial-activity-enterobacter,consensus_score,higher,Enterobacter,Gram-negative bacteria,wild-type,bioactivity,Yes
 eos9eyo,antimicrobial-activity-hpylori,chembl_dose_response_0,higher,Helicobacter pylori,Gram-negative bacteria,wild-type,bioactivity,Yes
 eos9f6t,chemprop-sars-cov-inhibition,activity,higher,SARS-CoV-2,Viruses,wild-type,bioactivity,No
 eos9f7c,paeruginosa-permeation,permeability_proba,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,permeability,No

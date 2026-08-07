@@ -1,10 +1,22 @@
 """Step 08 — per-pathogen top-1000 Jaccard: same pathogen vs. different pathogen.
 
 Asks whether endpoints of the SAME pathogen pick out the same compounds more than endpoints of
-DIFFERENT pathogens do. For every pair of the 260 selected endpoint columns, the Jaccard overlap of
-their top-1000 highest-scoring compounds (out of 1,355,109), then aggregated per pathogen: turquoise =
+DIFFERENT pathogens do. For every pair of the selected endpoint columns, the Jaccard overlap of their
+top-1000 highest-scoring compounds (out of 1,355,109), then aggregated per pathogen: turquoise =
 every unordered pair of that pathogen's own columns, crimson = its columns against every other
 pathogen's.
+
+**Scope: the 15 curated pathogens of interest** (``config/pathogens_of_interest.csv``), replacing the
+former ``min<K>``-endpoint thresholds (2026-08-07). Restricting the node set removes every other
+pathogen ENTIRELY — the ~40 gut-microbiome and other organisms stop being different-pathogen partners
+too — so each pathogen's crimson box is against the other 14 of interest only, **not** against all 57.
+That is a deliberately narrower comparator than the old ``min5`` figure used, and a caption must say
+so: "specific to this pathogen" here means "relative to the other priority pathogens".
+
+**Two of the 15 have a single endpoint** (*Campylobacter*, *H. pylori*), so they have no
+same-pathogen pair and no turquoise box — only a crimson one, and a NaN ``same_median``. They are
+kept rather than dropped: for a pathogen on the priority list, having too little in the hub to assess
+is itself the result, and hiding the row would hide it.
 
 **Three matrix variants are computed, not five.** Top-N Jaccard depends only on each column's own
 internal ranking, and both column scalings from step 07 are strictly increasing per column — so
@@ -13,32 +25,32 @@ scaled matrices therefore give the same result, computed once and labelled as co
 the row-normalized matrices change rankings, because each row is divided by a different scalar. The
 identity is **asserted at runtime**, not assumed — and the assertion earns its keep: baseline ==
 rank-percentiled holds exactly, but baseline == z-scored comes back FALSE, because ``(x - mean) / std``
-in float32 reorders near-tied values in one column of 260 (~0.001 on 138 of 67,600 Jaccard cells).
+in float32 reorders near-tied values in one column of 300 (~0.001 on 156 of 90,000 Jaccard cells).
 
-The 260x260 Jaccard matrices are written out for reuse by later analysis.
+The full 300x300 Jaccard matrices are written out for reuse by later analysis — they are computed over
+ALL pathogens, and only the per-pathogen aggregation is restricted to the 15.
 
 Reporting choices worth knowing:
 
-  - **Minimum endpoints per pathogen** is a command-line argument (default 5). A pathogen below it is
-    removed from the analysis ENTIRELY — it stops being a different-pathogen partner too, not merely
-    loses its own box. Pass several values to compare thresholds side by side; each writes its own
-    ``min<K>`` outputs rather than overwriting.
   - **Same-model pairs are INCLUDED** in the boxes — the literal "each column against all others". Two
     output columns of one model agreeing says little about pathogen specificity, so the summary CSV
-    carries ``same_median_excl_same_model`` alongside ``same_median``. Read them together: at
-    ``min5``, three of the eleven surviving pathogens have NO cross-model same-pathogen pair at all.
+    carries ``same_median_excl_same_model`` alongside ``same_median``. Read them together: several
+    pathogens have NO cross-model same-pathogen pair at all, so their turquoise box is one model
+    agreeing with itself.
   - **Linear x-axis** — values bunch near zero, but exact-zero pairs render instead of being silently
     dropped by a log axis. Nothing is filtered.
 
-    python 08_pathogen_jaccard.py          # min 5
-    python 08_pathogen_jaccard.py 2 5      # both, for comparison
+  This is a DIAGNOSTIC, not a paper panel: plain matplotlib rather than the 3 cm cell grid, because
+  the y axis carries per-pathogen endpoint and pair counts that go illegible at page width.
 
-Outputs (per threshold K)
+    python 08_pathogen_jaccard.py
+
+Outputs
 -------
-    output/08_pathogen_jaccard/08_jaccard_top1000_<variant>_matrix.csv          (260x260, reused)
-    output/08_pathogen_jaccard/08_pathogen_jaccard_top1000_min<K>_<variant>_summary.csv
-    output/08_pathogen_jaccard/png/08_pathogen_jaccard_top1000_min<K>_<variant>.png
-    output/08_pathogen_jaccard/pdf/08_pathogen_jaccard_top1000_min<K>_<variant>.pdf
+    output/08_pathogen_jaccard/08_jaccard_top1000_<variant>_matrix.csv          (300x300, reused)
+    output/08_pathogen_jaccard/08_pathogen_jaccard_top1000_<variant>_summary.csv
+    output/08_pathogen_jaccard/png/08_pathogen_jaccard_top1000_<variant>.png
+    output/08_pathogen_jaccard/pdf/08_pathogen_jaccard_top1000_<variant>.pdf
 """
 
 import os
@@ -55,7 +67,7 @@ from default import ANNOTATION_PREDS_SUBDIR  # noqa: E402
 from eval_correlations import (  # noqa: E402
     build_named_score_matrix,
     column_metric_pairs,
-    multi_column_pathogen_nodes,
+    pathogens_of_interest_nodes,
     parse_named_column,
     pathogen_metric_boxes,
     pathogen_metric_summary,
@@ -66,10 +78,6 @@ from eval_correlations import (  # noqa: E402
 from plots_matrix_analyses import pathogen_jaccard_figure  # noqa: E402
 
 CUTOFF = 1000
-#: Minimum endpoints a pathogen must have OF ITS OWN to enter the analysis. User-directed, not
-#: fitted; overridable on the command line (see the module docstring).
-DEFAULT_MIN_COLUMNS = (5,)
-min_columns_values = [int(a) for a in sys.argv[1:]] or list(DEFAULT_MIN_COLUMNS)
 
 pred_dir = os.path.join(root, "..", "data", "processed", ANNOTATION_PREDS_SUBDIR)
 matrix_dir = os.path.join(root, "..", "output", "07_score_matrices")
@@ -132,33 +140,37 @@ if base is not None:
 # ----------------------------------------------------------------------------- #
 # 2. Per-pathogen aggregation and figure, per threshold
 # ----------------------------------------------------------------------------- #
-for min_columns in min_columns_values:
-    print(f"\n===== minimum {min_columns} endpoints per pathogen =====")
-    for slug, label, _ in VARIANTS:
-        jac = jaccards[slug]
-        nodes = multi_column_pathogen_nodes(jac, min_columns=min_columns)
-        all_pathogens = pd.Series([parse_named_column(c)[0] for c in jac.columns]).value_counts()
-        n_columns = pd.Series([parse_named_column(n)[0] for n in nodes]).value_counts()
-        dropped = all_pathogens.drop(index=n_columns.index)
+for slug, label, _ in VARIANTS:
+    jac = jaccards[slug]
+    nodes = pathogens_of_interest_nodes(jac, pathogens_of_interest_path, endpoint_selection_path)
+    all_pathogens = pd.Series([parse_named_column(c)[0] for c in jac.columns]).value_counts()
+    n_columns = pd.Series([parse_named_column(n)[0] for n in nodes]).value_counts()
+    dropped = all_pathogens.drop(index=n_columns.index)
 
-        pairs = column_metric_pairs(jac.loc[nodes, nodes])
-        boxes = pathogen_metric_boxes(pairs)
-        summary = pathogen_metric_summary(boxes, n_columns)
-        stem = f"08_pathogen_jaccard_top{CUTOFF}_min{min_columns}_{slug}"
-        summary.to_csv(os.path.join(output_dir, f"{stem}_summary.csv"), index=False)
+    pairs = column_metric_pairs(jac.loc[nodes, nodes])
+    boxes = pathogen_metric_boxes(pairs)
+    summary = pathogen_metric_summary(boxes, n_columns)
+    stem = f"08_pathogen_jaccard_top{CUTOFF}_{slug}"
+    summary.to_csv(os.path.join(output_dir, f"{stem}_summary.csv"), index=False)
 
-        png_path, pdf_path = pathogen_jaccard_figure(
-            boxes, summary, cutoff=CUTOFF,
-            matrix_label=f"{label}  ({min_columns}+ endpoints per pathogen)",
-            name=stem, output_dir=output_dir)
+    png_path, pdf_path = pathogen_jaccard_figure(
+        boxes, summary, cutoff=CUTOFF,
+        matrix_label=f"{label}  (15 pathogens of interest)",
+        name=stem, output_dir=output_dir)
 
-        print(f"[pathogen-jaccard] {slug}")
-        print(f"    kept {len(nodes)} of {len(jac.columns)} columns, "
-              f"{len(summary)} of {len(all_pathogens)} pathogens "
-              f"(>= {min_columns} endpoints each)")
-        print(f"    dropped {len(dropped)} pathogens / {int(dropped.sum())} columns")
-        print(f"    wrote {os.path.basename(png_path)} + {os.path.basename(pdf_path)}")
-        print(summary.to_string(index=False, float_format=lambda v: f"{v:.4f}"))
-        print()
+    print(f"[pathogen-jaccard] {slug}")
+    print(f"    kept {len(nodes)} of {len(jac.columns)} columns, "
+          f"{len(summary)} of {len(all_pathogens)} pathogens (the curated 15)")
+    print(f"    excluded {len(dropped)} other pathogens / {int(dropped.sum())} columns — they are "
+          "no longer different-pathogen partners either")
+    # A priority pathogen with one endpoint has no same-pathogen pair. It is KEPT, with a diff box
+    # and a NaN same_median, because the gap is the finding for a pathogen on the priority list.
+    no_same = summary[summary["n_same_pairs"] == 0]
+    if len(no_same):
+        print(f"    {len(no_same)} pathogen(s) with a single endpoint, so no same-pathogen pair "
+              f"and no same box: {', '.join(no_same['pathogen'])}")
+    print(f"    wrote {os.path.basename(png_path)} + {os.path.basename(pdf_path)}")
+    print(summary.to_string(index=False, float_format=lambda v: f"{v:.4f}"))
+    print()
 
 print(f"Done → {output_dir}")

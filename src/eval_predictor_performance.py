@@ -53,7 +53,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from default import (ACTIVITY_BINARIZE_TOP_N, COADD_MODEL_ID, CONSENSUS_COLUMN,
-                     CURATED_PREDICTORS, PATHOGEN_ORGANISM_ALIASES, PREDICTOR_CHANCE_LEVEL,
+                     CURATED_PREDICTORS, PREDICTOR_CHANCE_LEVEL,
                      PREDICTOR_FAMILIES, PREDICTOR_METRICS)
 
 #: Parquet columns read at once when reducing targets to their top-N indices. 20 columns of 1.35M
@@ -238,16 +238,16 @@ def balanced_accuracy_from_mask(mask, n_mask_true, top_idx, n_total):
 # --------------------------------------------------------------------------- #
 # Activity endpoints as predictors of each other                               #
 # --------------------------------------------------------------------------- #
-def pathogen_subset_endpoints(targets, pathogens_csv, consensus_col=CONSENSUS_COLUMN,
-                              aliases=PATHOGEN_ORGANISM_ALIASES):
+def pathogen_subset_endpoints(targets, pathogens_csv, consensus_col=CONSENSUS_COLUMN):
     """The activity endpoints of the 15 pathogens of interest, with consensus models collapsed.
 
     Two reductions, in order:
 
     1.  Keep only endpoints whose organism is one of ``config/pathogens_of_interest.csv``, matched
-        through :data:`default.PATHOGEN_ORGANISM_ALIASES` — an explicit map, never a genus
-        substring, which would wrongly capture *C. glabrata* for *C. albicans* and two non-pneumoniae
-        streptococci for *S. pneumoniae*.
+        EXACTLY. The two configs were aligned on 2026-08-07 (they previously spelled Campylobacter
+        and Enterobacter differently and needed an alias map). Never match on a genus substring if
+        they diverge again: that would wrongly capture *C. glabrata* for *C. albicans* and two
+        non-pneumoniae streptococci for *S. pneumoniae* — fix the spelling instead.
     2.  Per (model_id, organism): if that model publishes ``consensus_col`` for the organism, keep
         ONLY that column; otherwise keep all of its endpoints. Grouping by (model_id, organism)
         rather than model_id matters — eos3dys spans six organisms and has no consensus column, so
@@ -257,8 +257,7 @@ def pathogen_subset_endpoints(targets, pathogens_csv, consensus_col=CONSENSUS_CO
     name from the pathogen config) and ``is_consensus``.
     """
     pathogens = pd.read_csv(pathogens_csv)
-    # organism value as spelled in the endpoint config -> canonical pathogen name
-    wanted = {aliases.get(p, p): p for p in pathogens["pathogen"]}
+    wanted = {p: p for p in pathogens["pathogen"]}
 
     sub = targets[targets["organism"].isin(wanted)].copy()
     sub["pathogen"] = sub["organism"].map(wanted)

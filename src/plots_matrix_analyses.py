@@ -43,7 +43,7 @@ def pathogen_jaccard_figure(boxes, summary, *, cutoff, matrix_label, name, outpu
     descending, matching :func:`eval_correlations.pathogen_metric_summary`.
 
     Pathogens with fewer than the required number of endpoints are expected to have been removed
-    upstream by :func:`eval_correlations.multi_column_pathogen_nodes` — a pathogen with one endpoint
+    upstream by :func:`eval_correlations.pathogens_of_interest_nodes` — a pathogen with one endpoint
     has no same-pathogen pair at all.
 
     **Linear x-axis, deliberately** (user-directed): top-N Jaccard values are small and bunch near

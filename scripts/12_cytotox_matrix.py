@@ -37,6 +37,12 @@ compounds, as one small-multiples figure with one panel per endpoint. The pathog
 step 09, on the same ``eos1klk`` layout. Merged here because it consumes exactly this matrix and
 nothing else; as a separate step it re-read the 720 MB CSV this script has just written.
 
+**The background grid is step 09's, reused not recomputed** (2026-08-07). All three property
+families now sit on ONE full-library density grid — pathogens (step 09), abx (step 11) and toxicity
+(here) — so their panels are directly comparable. This step used to compute its own
+``12_umap_background.csv``; it came out byte-identical to ``09_umap_background.csv``, so the
+duplicate bought nothing but a second chance to drift. This step now REQUIRES step 09 to have run.
+
 **A rank cutoff, never a score threshold** — the top ``PROJECTION_TOP_N`` compounds per endpoint by
 count, with no score value chosen or reviewed.
 
@@ -53,7 +59,6 @@ Outputs
 -------
     output/12_cytotox_matrix/12_cytotox_matrix_named.csv      (1,355,109 x 24 + key/input)
     output/12_cytotox_matrix/12_cytotox_endpoint_stats.csv
-    output/12_cytotox_matrix/12_{method}_background.csv
     output/12_cytotox_matrix/12_top{PROJECTION_TOP_N}_per_endpoint.csv
     output/12_cytotox_matrix/{png,pdf}/12_umap_top{PROJECTION_TOP_N}_toxicity.{png,pdf}
     output/12_cytotox_matrix/figure_cells.json
@@ -68,6 +73,7 @@ sys.path.append(os.path.join(root, "..", "src"))
 
 from default import (  # noqa: E402
     ANNOTATION_PREDS_SUBDIR, PROJECTION_MODEL_ID, PROJECTION_PREDS_SUBDIR,
+    TOX_PROJECTION_METHOD,
 )
 from eval_property_matrix import (  # noqa: E402
     build_property_matrix, property_endpoint_stats, report_missing,
@@ -80,6 +86,10 @@ projection_file = os.path.join(
     root, "..", "data", "processed", PROJECTION_PREDS_SUBDIR, f"{PROJECTION_MODEL_ID}_v1.csv")
 config_dir = os.path.join(root, "..", "config")
 output_dir = os.path.join(root, "..", "output", "12_cytotox_matrix")
+#: Step 09's full-library density grid, reused rather than recomputed — see section 3.
+projection_output_dir = os.path.join(root, "..", "output", "09_reference_library_projection")
+background_path = os.path.join(
+    projection_output_dir, f"09_{TOX_PROJECTION_METHOD}_background.csv")
 os.makedirs(output_dir, exist_ok=True)
 
 PREFIX = "cytotox"
@@ -131,9 +141,19 @@ if not os.path.exists(projection_file):
 # Reads back the matrix CSV this script just wrote rather than the in-memory frame: the projection
 # streams it in chunks (key + the 24 score columns only), which is what keeps a 1.35M x 24 top-N
 # scan off the peak memory of this process.
+#
+# The background grid comes from step 09, not from here. All three property families now sit on ONE
+# density grid — pathogens (09), abx (11) and toxicity (12) — so their panels are directly
+# comparable. Recomputing it here produced a byte-identical file, so the duplicate bought nothing
+# but a second chance to drift.
+if not os.path.exists(background_path):
+    sys.exit(f"Missing {background_path}. Run `python 09_reference_library_projection.py` first — "
+             "step 12 reuses its background grid rather than recomputing it.")
+
 print(f"\n[cytotox-matrix] toxicity projection over {len(endpoints)} endpoints...")
 tox_endpoints = run_tox_projection(projection_file=projection_file, properties_csv=named_path,
-                                   config_csv=config_csv, output_dir=output_dir)
-save_tox_projection_figures(output_dir, tox_endpoints)
+                                   config_csv=config_csv, output_dir=output_dir,
+                                   background_path=background_path)
+save_tox_projection_figures(output_dir, tox_endpoints, background_path=background_path)
 
 print(f"\nDone -> {output_dir}")

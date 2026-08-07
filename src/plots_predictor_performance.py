@@ -42,12 +42,19 @@ DEFAULT_CELLS = (2, 6)
 POINT_SIZE = 1.5
 POINT_ALPHA = 0.25
 BOX_WIDTH = 0.6
+#: Half-width of the point scatter around each box centre, so the swarm spans 2x this. 0.22 against
+#: a 0.6 box keeps every point inside its own box and well clear of the neighbouring position (1.0
+#: apart). Shared by all four figure families so the panels look alike.
+#: NOTE: `box_with_jitter` silently draws NO jitter unless an `rng` is also passed —
+#: `_jitter_points` falls back to `np.zeros` when `rng is None`, so `jitter_width` alone does
+#: nothing. Every call below therefore passes both.
+JITTER_WIDTH = 0.22
 
 
 class PredictorPerformancePlot(BasePlot):
     """One family's predictors, each a box over its performance across all activity targets."""
 
-    def __init__(self, family, perf, ax=None, cells=None):
+    def __init__(self, family, perf, ax=None, cells=None, seed=RANDOM_SEED):
         super().__init__(ax=ax, cells=cells or FAMILY_CELLS.get(family, DEFAULT_CELLS))
         self.name = f"13_performance_{family}"
 
@@ -60,13 +67,14 @@ class PredictorPerformancePlot(BasePlot):
         order = (block.groupby("predictor")["value"].median()
                  .sort_values(ascending=False).index.tolist())
 
+        rng = np.random.default_rng(seed)  # jitter is stochastic; seeded so the figure is stable
         types = block.drop_duplicates("predictor").set_index("predictor")["predictor_type"]
         for i, predictor in enumerate(order):
             vals = block.loc[block["predictor"] == predictor, "value"]
             box_with_jitter(
                 self.ax, vals, i, TYPE_COLORS[types[predictor]],
-                width=BOX_WIDTH, filled=False,
-                point_size=POINT_SIZE, point_alpha=POINT_ALPHA)
+                width=BOX_WIDTH, filled=False, jitter_width=JITTER_WIDTH,
+                point_size=POINT_SIZE, point_alpha=POINT_ALPHA, rng=rng)
 
         self.ax.set_xticks(range(len(order)))
         # Only the column name is shown: the family is the figure, and the model ID is in the CSV.
@@ -90,7 +98,6 @@ PAIR_LABELS = {True: "same organism", False: "cross organism"}
 #: Points drawn per organism box before subsampling. Each box pools (its endpoints x 259 targets),
 #: which reaches ~16,500 points for P. falciparum — far past what a 3 mm box can show.
 SELF_POINT_CAP = 400
-SELF_JITTER_WIDTH = 0.22
 
 
 class ActivitySelfPerformancePlot(BasePlot):
@@ -128,7 +135,7 @@ class ActivitySelfPerformancePlot(BasePlot):
                 if not len(vals):
                     continue
                 _jitter_points(self.ax, vals, i, PAIR_COLORS[same], vert=True,
-                               jitter_width=SELF_JITTER_WIDTH, cap=SELF_POINT_CAP,
+                               jitter_width=JITTER_WIDTH, cap=SELF_POINT_CAP,
                                point_size=POINT_SIZE, point_alpha=POINT_ALPHA, rng=rng)
 
         self.ax.set_xticks(range(len(order)))
@@ -151,9 +158,11 @@ class CuratedPredictorPlot(BasePlot):
     within-family. Within each family, predictors are ordered by median.
     """
 
-    def __init__(self, curated, ax=None, cells=(3, 4), family_hues=CURATED_FAMILY_HUES):
+    def __init__(self, curated, ax=None, cells=(3, 4), family_hues=CURATED_FAMILY_HUES,
+                 seed=RANDOM_SEED):
         super().__init__(ax=ax, cells=cells)
         self.name = "13_performance_curated_predictors"
+        rng = np.random.default_rng(seed)  # jitter is stochastic; seeded so the figure is stable
 
         if not len(curated):
             self._unavailable()
@@ -171,7 +180,8 @@ class CuratedPredictorPlot(BasePlot):
         for i, predictor in enumerate(order):
             vals = curated.loc[curated["predictor"] == predictor, "value"]
             box_with_jitter(self.ax, vals, i, colors[predictor], width=BOX_WIDTH, filled=False,
-                            point_size=POINT_SIZE * 2, point_alpha=0.35)
+                            jitter_width=JITTER_WIDTH, point_size=POINT_SIZE * 2,
+                            point_alpha=0.35, rng=rng)
 
         self.ax.set_xticks(range(len(order)))
         self.ax.set_xticklabels([p.split("__")[-1] for p in order], rotation=90, ha="center")
@@ -235,7 +245,7 @@ class PathogenSubsetPerformancePlot(BasePlot):
                 # carrying pathogen identity: cross-organism points are the pale majority, and
                 # same-organism ones are drawn darker and larger on top.
                 _jitter_points(self.ax, vals, i, colors[endpoint], vert=True,
-                               jitter_width=SELF_JITTER_WIDTH, cap=SELF_POINT_CAP,
+                               jitter_width=JITTER_WIDTH, cap=SELF_POINT_CAP,
                                point_size=POINT_SIZE * (3 if same else 1),
                                point_alpha=0.75 if same else POINT_ALPHA, rng=rng)
 

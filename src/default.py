@@ -306,6 +306,25 @@ TOX_PREFIX = "cytotox"
 TOX_RANK_DESCENDING = True
 
 # ---------------------------------------------------------------------------
+# Step 10 — which physchem descriptors get a UMAP panel
+# ---------------------------------------------------------------------------
+# Three of the 22 descriptors are drawn on the shared library UMAP (user-directed, 2026-08-07). The
+# other 19 are summarised by their distributions only.
+#
+# READ THESE PANELS DIFFERENTLY FROM THE ABX AND TOXICITY ONES. There, top-N marks a SELECTED set —
+# "the 1000 most antibiotic-like compounds" is a meaningful group. Here the descriptors are
+# continuous and unimodal over the library, so the top 1000 is simply the **extreme tail**: the 1000
+# heaviest molecules, the 1000 most polar, the 1000 most lipophilic. The panel shows where that tail
+# sits in chemical space, which is a weaker claim than "these compounds were picked out", and a
+# caption must not present it as a hit set.
+#
+# "Top" means HIGHEST value for all three. config/physchem_models.csv deliberately has no
+# `direction` column — no descriptor has a better end — so this is a ranking convention, not a
+# judgement about which end is desirable.
+PHYSCHEM_PROJECTION_ENDPOINTS = ("mw", "tpsa", "clogp")
+PHYSCHEM_PREFIX = "physchem"
+
+# ---------------------------------------------------------------------------
 # Step 14 — pathogen hits vs antibiotic-resemblance hits on the library UMAP.
 # The subset of config/antibiotic_resemblance.csv's 55 selected endpoints drawn against every
 # pathogen: nine spanning the three kinds of evidence — one continuous learned score, two
@@ -371,14 +390,15 @@ PREDICTOR_CHANCE_LEVEL = 0.5
 # organisms. This cuts 214 endpoints to 59 across the 15 pathogens.
 CONSENSUS_COLUMN = "consensus_score"
 
-# config/pathogens_of_interest.csv and config/08_endpoint_selection.csv spell two organisms
-# differently. An explicit alias map, never genus-substring matching: "Candida albicans" would
-# otherwise capture "Candida glabrata", and "Streptococcus pneumoniae" would capture
-# S. parasanguinis and S. salivarius — all three distinct organisms in the curation.
-PATHOGEN_ORGANISM_ALIASES = {
-    "Campylobacter": "Campylobacter spp",
-    "Enterobacter": "Enterobacter spp",
-}
+# NOTE (2026-08-07): PATHOGEN_ORGANISM_ALIASES removed. It existed because
+# config/pathogens_of_interest.csv and config/08_endpoint_selection.csv spelled two organisms
+# differently ("Campylobacter" vs "Campylobacter spp", likewise Enterobacter), which also made those
+# two fall through _pathogen_code's fallback and be coded `cspp`/`espp` instead of
+# `campylobacter`/`enterobacter`. The selection config was aligned to the pathogen config (7 rows),
+# so the two now match exactly and every lookup is an exact match.
+# Do NOT reintroduce genus-substring matching if they ever diverge again: "Candida albicans" would
+# capture "Candida glabrata", and "Streptococcus pneumoniae" would capture S. parasanguinis and
+# S. salivarius — all distinct organisms in the curation. Fix the spelling instead.
 
 # The curated 12-predictor subset scored against the pathogen-subset targets (step 13's sixth
 # figure): a hand-picked, user-directed shortlist of the 101 property columns, three families in one

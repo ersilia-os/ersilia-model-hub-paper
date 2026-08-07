@@ -18,9 +18,11 @@ What this module provides, at the **output-column** level (each output column is
   2. **normalization** — :func:`scale_matrix` per column (z-score / rank-percentile) and
      :func:`row_normalize` per compound profile (L1 / L2). Independent and composable (step 07).
   3. **top-N Jaccard** — :func:`topn_jaccard_matrix`, full-library scale (step 08).
-  4. **pathogen aggregation** — :func:`column_metric_pairs`, :func:`multi_column_pathogen_nodes`,
+  4. **pathogen aggregation** — :func:`column_metric_pairs`, :func:`pathogens_of_interest_nodes`,
      :func:`pathogen_metric_boxes` and :func:`pathogen_metric_summary` turn a node x node metric
      matrix into same-pathogen vs. different-pathogen distributions (step 08).
+     :func:`multi_column_pathogen_nodes` is the superseded ``min<K>``-endpoint node selector, kept
+     as a general utility but **no longer called by any step** since 2026-08-07.
 
 Depends only on pandas / numpy — no project eval primitives, because the data layout
 (``key``/``input``) differs from the ``smiles``/``bin`` contract in ``eval_common``.
@@ -422,6 +424,56 @@ def multi_column_pathogen_nodes(metric_matrix, min_columns=2):
     keep = pathogen.value_counts()
     keep = set(keep[keep >= min_columns].index)
     return [n for n in metric_matrix.columns if pathogen[n] in keep]
+
+
+def pathogens_of_interest_nodes(metric_matrix, pathogens_of_interest_path,
+                                endpoint_selection_path):
+    """Nodes belonging to the 15 curated pathogens of interest, in config order.
+
+    Like :func:`multi_column_pathogen_nodes`, restricting the node set removes the excluded
+    pathogens ENTIRELY — they stop being different-pathogen partners, so each kept pathogen's
+    ``diff`` distribution is against the other 14 of interest only, not against all 57.
+
+    Resolution goes through the same organism -> code path the matrix was built with
+    (:func:`_pathogen_code`) rather than reading the config's ``code`` column directly, and
+    **raises** if any of the 15 cannot be resolved — so an upstream rename fails loudly instead of
+    quietly shrinking the figure. Matching is EXACT, never a prefix or substring: the two files were
+    aligned on 2026-08-07 so no fuzzy match is needed, and substring matching on organism names is
+    actively unsafe here ("Candida albicans" would capture "Candida glabrata", "Streptococcus
+    pneumoniae" would capture S. parasanguinis and S. salivarius).
+
+    A pathogen with a single endpoint is KEPT: it has no same-pathogen pair, so it carries a ``diff``
+    box and a NaN ``same_median`` rather than being dropped. That absence is the finding for a
+    priority pathogen — it says the hub has too little on it to assess — and hiding the row would
+    hide it.
+    """
+    sel = pd.read_csv(endpoint_selection_path)
+    sel = sel[sel["selected"] == "Yes"]
+    poi = pd.read_csv(pathogens_of_interest_path)
+    org_to_code = dict(zip(poi["pathogen"], poi["code"]))
+    organisms = sorted(sel["organism"].dropna().unique())
+
+    codes, unresolved = [], []
+    for name in poi["pathogen"]:
+        if name not in organisms:
+            unresolved.append(name)
+            continue
+        codes.append(_pathogen_code(name, org_to_code))
+    if unresolved:
+        raise ValueError(
+            f"{len(unresolved)} pathogen(s) of interest have no organism in "
+            f"{endpoint_selection_path}: {unresolved}. Resolve the naming before plotting, or the "
+            "figure would silently show fewer than the curated set.")
+
+    present = {parse_named_column(c)[0] for c in metric_matrix.columns}
+    missing = [c for c in codes if c not in present]
+    if missing:
+        raise ValueError(
+            f"Pathogen code(s) {missing} resolved from {pathogens_of_interest_path} but absent from "
+            "the metric matrix — the selection and the matrix disagree.")
+
+    keep = set(codes)
+    return [n for n in metric_matrix.columns if parse_named_column(n)[0] in keep]
 
 
 def pathogen_metric_boxes(pairs):

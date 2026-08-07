@@ -20,11 +20,12 @@ import json
 import os
 
 import numpy as np
+import pandas as pd
 
 import plotting_base  # noqa: F401  (applies the stylia print/article style on import)
 from plotting_base import GridPlot
 from plotting_colors import INK, hue
-from plotting_utils import sentence_case
+from plotting_utils import merge_figure_cells, sentence_case
 
 #: Bins per panel. Lower than the single-panel default (120) because each panel here is roughly a
 #: third of a 3 cm cell wide, where 120 bins render as noise rather than a shape.
@@ -96,3 +97,34 @@ def save_property_distribution_figure(output_dir, matrix, endpoint_names,
         json.dump(footprints, f, indent=2)
     print(f"  figure: {plot.name} {tuple(plot.cells)} cells")
     return footprints
+
+
+def save_physchem_projection_figure(output_dir, background_path, top_n_table, endpoints, top_n,
+                                    method):
+    """Step 10's UMAP panels: each selected descriptor's top-``top_n`` compounds on the shared grid.
+
+    Reuses :class:`plots_tox_projection.ToxicityProjectionGridPlot` — the class is family-agnostic
+    despite its name, and reusing it is what guarantees these panels render identically to the abx
+    (step 11) and toxicity (step 12) ones: same background, same marker, same layout.
+
+    **These panels answer a weaker question than the abx and toxicity ones.** There, top-N marks a
+    selected set. Here the descriptors are continuous and unimodal over the library, so the top 1000
+    is the extreme tail — the heaviest, most polar or most lipophilic molecules — not a set anything
+    picked out. The legend says "highest" rather than "most X" for that reason, and a caption must
+    not read the points as hits.
+    """
+    from plots_tox_projection import ToxicityProjectionGridPlot
+
+    background = pd.read_csv(background_path) if os.path.exists(background_path) else pd.DataFrame()
+    plot = ToxicityProjectionGridPlot(
+        method, background, top_n_table, endpoints, top_n=top_n, cols=len(endpoints),
+        name=f"10_{method}_top{top_n}_physchem",
+        legend_label=f"top {top_n} highest")
+    footprints = {}
+    if plot.is_available:
+        plot.save(output_dir)
+        footprints[plot.name] = list(plot.cells)
+        print(f"  figure: {plot.name} {tuple(plot.cells)} cells")
+    else:
+        print(f"  [skip figure] 10_{method}_top{top_n}_physchem: insufficient data")
+    return merge_figure_cells(output_dir, footprints)

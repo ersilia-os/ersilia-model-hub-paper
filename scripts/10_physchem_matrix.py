@@ -47,21 +47,38 @@ import os
 import sys
 import time
 
+import pandas as pd
+
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root, "..", "src"))
 
-from default import ANNOTATION_PREDS_SUBDIR  # noqa: E402
+from default import (  # noqa: E402
+    ANNOTATION_PREDS_SUBDIR, PHYSCHEM_PREFIX, PHYSCHEM_PROJECTION_ENDPOINTS,
+    PROJECTION_MODEL_ID, PROJECTION_PREDS_SUBDIR, PROJECTION_TOP_N, TOX_PROJECTION_METHOD,
+)
 from eval_property_matrix import (  # noqa: E402
     build_property_matrix, property_endpoint_stats, report_missing,
 )
-from plots_property_matrix import save_property_distribution_figure  # noqa: E402
+# Generic top-N helpers; they live in eval_tox_projection only because step 12 needed them first.
+from eval_projection import load_projection  # noqa: E402
+from eval_tox_projection import attach_coordinates, endpoint_top_n  # noqa: E402
+from plots_property_matrix import (  # noqa: E402
+    save_physchem_projection_figure, save_property_distribution_figure,
+)
 
 pred_dir = os.path.join(root, "..", "data", "processed", ANNOTATION_PREDS_SUBDIR)
+projection_file = os.path.join(
+    root, "..", "data", "processed", PROJECTION_PREDS_SUBDIR, f"{PROJECTION_MODEL_ID}_v1.csv")
 config_dir = os.path.join(root, "..", "config")
 output_dir = os.path.join(root, "..", "output", "10_physchem_matrix")
 os.makedirs(output_dir, exist_ok=True)
+#: Step 09's full-library density grid, shared with steps 11 and 12 rather than recomputed.
+projection_output_dir = os.path.join(root, "..", "output", "09_reference_library_projection")
+background_path = os.path.join(
+    projection_output_dir, f"09_{TOX_PROJECTION_METHOD}_background.csv")
+top_n_path = os.path.join(output_dir, f"10_top{PROJECTION_TOP_N}_per_descriptor.csv")
 
-PREFIX = "physchem"
+PREFIX = PHYSCHEM_PREFIX
 config_csv = os.path.join(config_dir, "physchem_models.csv")
 named_path = os.path.join(output_dir, "10_physchem_matrix_named.csv")
 stats_path = os.path.join(output_dir, "10_physchem_endpoint_stats.csv")
@@ -107,5 +124,40 @@ report_missing(matrix, endpoints)
 print(f"\n[physchem-matrix] figure: {len(endpoints)} descriptor distributions")
 save_property_distribution_figure(output_dir, matrix, endpoints,
                                  name="10_physchem_distributions")
+
+# --------------------------------------------------------------------------- #
+# 4. UMAP panels for three descriptors (user-directed)                         #
+# --------------------------------------------------------------------------- #
+# Only MW, TPSA and cLogP, on step 09's shared background — the same grid the abx (11) and toxicity
+# (12) panels use, so all four families are directly comparable. NOTE these three answer a weaker
+# question: the descriptors are continuous and unimodal, so "top 1000" is the extreme TAIL (the
+# heaviest / most polar / most lipophilic molecules), not a selected set. See
+# default.PHYSCHEM_PROJECTION_ENDPOINTS.
+for path, step in [(projection_file, "00_download_data.py"),
+                   (background_path, "09_reference_library_projection.py")]:
+    if not os.path.exists(path):
+        sys.exit(f"Missing {path}. Run `python {step}` first.")
+
+proj_endpoints = pd.DataFrame([
+    {"model_id": "eos4djh", "column_name": c, "endpoint": f"{PREFIX}__eos4djh__{c}"}
+    for c in PHYSCHEM_PROJECTION_ENDPOINTS
+])
+missing_cols = [e for e in proj_endpoints["endpoint"] if e not in matrix.columns]
+if missing_cols:
+    sys.exit(f"PHYSCHEM_PROJECTION_ENDPOINTS names columns absent from the matrix: {missing_cols}")
+
+print(f"\n[physchem-matrix] UMAP panels for {len(proj_endpoints)} descriptors: "
+      f"{', '.join(PHYSCHEM_PROJECTION_ENDPOINTS)}")
+proj = load_projection(projection_file)
+tops = endpoint_top_n(named_path, proj_endpoints["endpoint"].tolist(), n=PROJECTION_TOP_N)
+top_table = attach_coordinates(tops, proj, method=TOX_PROJECTION_METHOD)
+top_table.to_csv(top_n_path, index=False)
+print(f"  -> {os.path.basename(top_n_path)} ({len(top_table):,} rows)")
+for r in proj_endpoints.itertuples():
+    g = top_table[top_table["endpoint"] == r.endpoint]
+    print(f"    {r.column_name}: top {len(g)} (value {g['score'].min():.4g}-{g['score'].max():.4g})")
+
+save_physchem_projection_figure(output_dir, background_path, top_table, proj_endpoints,
+                                top_n=PROJECTION_TOP_N, method=TOX_PROJECTION_METHOD)
 
 print(f"\nDone -> {output_dir}")

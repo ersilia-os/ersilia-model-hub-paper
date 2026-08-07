@@ -19,9 +19,9 @@ import os
 
 import pandas as pd
 
-from default import (CORR_CHUNK_SIZE, PROJECTION_BINS, PROJECTION_TOP_N, TOX_PREFIX,
+from default import (CORR_CHUNK_SIZE, PROJECTION_TOP_N, TOX_PREFIX,
                      TOX_PROJECTION_METHOD, TOX_RANK_DESCENDING)
-from eval_projection import background_density, load_projection, method_extent
+from eval_projection import load_projection
 
 
 def selected_endpoints(config_csv, prefix=TOX_PREFIX):
@@ -72,13 +72,18 @@ def attach_coordinates(tops, proj, method=TOX_PROJECTION_METHOD):
     return pd.concat(frames, ignore_index=True)
 
 
-def run_all(projection_file, properties_csv, config_csv, output_dir,
-            method=TOX_PROJECTION_METHOD, bins=PROJECTION_BINS, top_n=PROJECTION_TOP_N,
+def run_all(projection_file, properties_csv, config_csv, output_dir, background_path,
+            method=TOX_PROJECTION_METHOD, top_n=PROJECTION_TOP_N,
             chunk_size=CORR_CHUNK_SIZE):
-    """Step 13 orchestrator: the shared background grid plus each endpoint's top-``top_n``.
+    """Step 12's toxicity projection: each endpoint's top-``top_n`` on the shared background grid.
 
-    Writes ``13_{method}_background.csv`` (one row per grid cell) and
-    ``13_top{top_n}_per_endpoint.csv`` (one row per (endpoint, compound)).
+    Writes ``12_top{top_n}_per_endpoint.csv`` (one row per (endpoint, compound)).
+
+    **The background grid is REUSED, not recomputed.** ``background_path`` points at step 09's
+    ``09_{method}_background.csv`` — the same full-library density over the same ``eos1klk`` layout,
+    so the toxicity panels sit on a background identical to the pathogen ones (step 09) and the abx
+    ones (step 11, which already reused it). Recomputing it here produced a byte-identical file, so
+    the only thing the duplicate bought was a second chance to drift.
     """
     endpoints_df = selected_endpoints(config_csv)
     endpoints = endpoints_df["endpoint"].tolist()
@@ -88,11 +93,11 @@ def run_all(projection_file, properties_csv, config_csv, output_dir,
     proj = load_projection(projection_file)
     print(f"[tox-projection] loaded {os.path.basename(projection_file)} for {len(proj)} compounds")
 
-    extent = method_extent(proj, method)
-    background = background_density(proj, method, bins, extent)
-    bg_path = os.path.join(output_dir, f"12_{method}_background.csv")
-    background.to_csv(bg_path, index=False)
-    print(f"  [{method}] background grid ({bins}x{bins}) -> {os.path.basename(bg_path)}")
+    if not os.path.exists(background_path):
+        raise FileNotFoundError(
+            f"Missing {background_path}. Run `python 09_reference_library_projection.py` first — "
+            "step 12 reuses its background grid rather than recomputing it.")
+    print(f"  [{method}] reusing background grid {os.path.basename(background_path)}")
 
     tops = endpoint_top_n(properties_csv, endpoints, n=top_n, chunk_size=chunk_size)
     table = attach_coordinates(tops, proj, method=method)
