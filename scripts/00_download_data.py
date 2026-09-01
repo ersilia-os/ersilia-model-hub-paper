@@ -545,6 +545,41 @@ else:
     except (Exception, SystemExit) as e:
         print(f"  WARNING: {PROJECTION_MODEL_ID} not available or failed: {e}")
 
+# Reference-library predictions for the 15 curated pathogen models
+# (config/pathogens_of_interest.csv) — feeds scripts/xx_chembl_models_reflib.py.
+# Deliberately scoped to just these 15, not every "Ready" Annotation model Section 4
+# already covers above (208 of them) — those 15 are already included in that loop's
+# output, but downloading the other ~193 models' reference-library predictions too
+# would be a multi-GB detour nothing in this repo currently needs.
+print("\nDownloading reference-library predictions for the 15 curated pathogen models...")
+pathogens_path = os.path.join(repo_root, "config", "pathogens_of_interest.csv")
+pathogens_df = pd.read_csv(pathogens_path)
+for eosid in pathogens_df["eosid"]:
+    meta_row = df_meta[df_meta["Identifier"] == eosid]
+    if meta_row.empty:
+        print(f"  WARNING: {eosid} not found in Airtable metadata — skipping.")
+        continue
+    version = meta_row["Release"].iloc[0]
+    if pd.isna(version) or not str(version).strip():
+        print(f"  Skipping {eosid}: no release version in metadata.")
+        continue
+    isaura_version = str(version).strip().split(".")[0]
+    out_csv = os.path.join(annotation_dir, f"{eosid}_{isaura_version}.csv")
+    if os.path.exists(out_csv):
+        print(f"  Already exists: {eosid} {isaura_version}")
+        continue
+    print(f"  Fetching {eosid} {isaura_version}...")
+    try:
+        download_from_isaura(
+            model_id=eosid,
+            model_version=isaura_version,
+            input_csv=ref_path,
+            output_path=annotation_dir,
+        )
+        print(f"    -> {out_csv}")
+    except (Exception, SystemExit) as e:
+        print(f"  WARNING: {eosid} {version} not available or failed: {e}")
+
 
 # =============================================================================
 # Validation
