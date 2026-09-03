@@ -26,9 +26,8 @@ import pandas as pd
 import stylia
 
 from plotting_base import BasePlot, MultiPanelPlot
-from plotting_colors import AUROC_PASS_COLORS, CATEGORY_COLORS, INK, REFERENCE_LINE, hue
+from plotting_colors import AUROC_PASS_COLORS, CATEGORY_COLORS, INK, REFERENCE_LINE, hue, shades
 from plotting_utils import (
-    CAP_POINTS,
     LEGEND_KW,
     abbrev,
     box_with_jitter,
@@ -115,9 +114,12 @@ def _sequential(base_name, n):
     """``n`` shades of an ArticleColors hue from a visible light tint to the full colour.
 
     The lightest shade is capped well above white (``lighten=0.35``, not ``0.0``) so no ordered
-    bin renders as an invisible near-white block on the white page (see ``wholecell_sizes``)."""
-    lightens = np.linspace(0.35, 1.0, n)
-    return [hue(base_name, lighten=float(l)) for l in lightens]
+    bin renders as an invisible near-white block on the white page (see ``wholecell_sizes``).
+    Reverse of ``plotting_colors.shades`` (full hue first, lightening towards a floor); this
+    module wants the opposite direction, light-to-dark, without duplicating the ramp math."""
+    if int(n) == 1:
+        return [hue(base_name, lighten=0.35)]
+    return list(reversed(shades(base_name, n, floor=0.35)))
 
 
 # --------------------------------------------------------------------------------------------

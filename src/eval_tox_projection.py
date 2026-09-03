@@ -1,18 +1,18 @@
 """Step 13 analysis engine — reference-library projection coloured by predicted toxicity.
 
-Same layout and same background as :mod:`eval_projection` (step 10), but the highlighted overlay
+Same layout and same background as :mod:`eval_projection` (step 11), but the highlighted overlay
 is per *toxicity endpoint* rather than per pathogen: for each endpoint selected in
 ``config/cytotoxicity_models.csv`` this finds the ``PROJECTION_TOP_N`` most toxic compounds in the
-step-11 table — a rank cutoff, never a score threshold — and attaches their
+step-08 cytotox matrix — a rank cutoff, never a score threshold — and attaches their
 :data:`default.TOX_PROJECTION_METHOD` coordinates.
 
 "Most toxic" is the HIGHEST value for every endpoint (:data:`default.TOX_RANK_DESCENDING`); see
 that constant for why this also holds for ``ld50_zhu``, the one regression endpoint, whose
 reciprocal-log units invert the dose scale.
 
-Memory: the step-11 table is ~690 MB, most of it the ``input`` SMILES column, which is never read
-here. The 24 score columns are streamed in chunks and each endpoint's running top-N is reduced
-after every chunk, so no more than one chunk plus 24 x N rows is ever held.
+Memory: the step-08 cytotox matrix is ~690 MB, most of it the ``input`` SMILES column, which is
+never read here. The 24 score columns are streamed in chunks and each endpoint's running top-N is
+reduced after every chunk, so no more than one chunk plus 24 x N rows is ever held.
 """
 
 import os
@@ -25,10 +25,10 @@ from eval_projection import load_projection
 
 
 def selected_endpoints(config_csv, prefix=TOX_PREFIX):
-    """The ``selected == "Yes"`` rows of the endpoint config, with their step-11 column names.
+    """The ``selected == "Yes"`` rows of the endpoint config, with their step-08 column names.
 
     Returns a DataFrame with ``model_id``, ``column_name`` and ``endpoint`` (the prefixed
-    ``{prefix}__{model_id}__{column_name}`` name as written by step 11), in config file order so
+    ``{prefix}__{model_id}__{column_name}`` name as written by step 08), in config file order so
     the figure's panels stay grouped by model.
     """
     config = pd.read_csv(config_csv)
@@ -75,14 +75,14 @@ def attach_coordinates(tops, proj, method=TOX_PROJECTION_METHOD):
 def run_all(projection_file, properties_csv, config_csv, output_dir, background_path,
             method=TOX_PROJECTION_METHOD, top_n=PROJECTION_TOP_N,
             chunk_size=CORR_CHUNK_SIZE):
-    """Step 12's toxicity projection: each endpoint's top-``top_n`` on the shared background grid.
+    """Step 13's toxicity projection: each endpoint's top-``top_n`` on the shared background grid.
 
-    Writes ``12_top{top_n}_per_endpoint.csv`` (one row per (endpoint, compound)).
+    Writes ``13_top{top_n}_per_endpoint.csv`` (one row per (endpoint, compound)).
 
-    **The background grid is REUSED, not recomputed.** ``background_path`` points at step 09's
-    ``09_{method}_background.csv`` — the same full-library density over the same ``eos1klk`` layout,
-    so the toxicity panels sit on a background identical to the pathogen ones (step 09) and the abx
-    ones (step 11, which already reused it). Recomputing it here produced a byte-identical file, so
+    **The background grid is REUSED, not recomputed.** ``background_path`` points at step 11's
+    ``11_{method}_background.csv`` — the same full-library density over the same ``eos1klk`` layout,
+    so the toxicity panels sit on a background identical to the pathogen ones (step 11) and the abx
+    ones (step 12, which already reused it). Recomputing it here produced a byte-identical file, so
     the only thing the duplicate bought was a second chance to drift.
     """
     endpoints_df = selected_endpoints(config_csv)
@@ -95,8 +95,8 @@ def run_all(projection_file, properties_csv, config_csv, output_dir, background_
 
     if not os.path.exists(background_path):
         raise FileNotFoundError(
-            f"Missing {background_path}. Run `python 09_reference_library_projection.py` first — "
-            "step 12 reuses its background grid rather than recomputing it.")
+            f"Missing {background_path}. Run `python 11_reference_library_projection.py` first — "
+            "step 13 reuses its background grid rather than recomputing it.")
     print(f"  [{method}] reusing background grid {os.path.basename(background_path)}")
 
     tops = endpoint_top_n(properties_csv, endpoints, n=top_n, chunk_size=chunk_size)
@@ -112,7 +112,7 @@ def run_all(projection_file, properties_csv, config_csv, output_dir, background_
         print(f"  {r.model_id}/{r.column_name}: top {len(g)}/{top_n} "
               f"(score {g['score'].min():.3f}-{g['score'].max():.3f}){note}")
 
-    out_path = os.path.join(output_dir, f"12_top{top_n}_per_endpoint.csv")
+    out_path = os.path.join(output_dir, f"13_top{top_n}_per_endpoint.csv")
     table.to_csv(out_path, index=False)
     print(f"  -> {os.path.basename(out_path)} ({len(table)} rows)")
     return endpoints_df

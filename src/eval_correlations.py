@@ -476,52 +476,75 @@ def pathogens_of_interest_nodes(metric_matrix, pathogens_of_interest_path,
     return [n for n in metric_matrix.columns if parse_named_column(n)[0] in keep]
 
 
-def pathogen_metric_boxes(pairs):
-    """Per-PATHOGEN same/different value arrays, aggregated from a :func:`column_metric_pairs` frame.
+#: Default ``exclusions`` for :func:`pathogen_metric_boxes` — ``{output key: flag column}``. Each
+#: entry repeats the ``same`` box with the rows where that boolean column is True removed. The
+#: default is the one step 08 has always reported: same-pathogen agreement without the pairs whose
+#: two columns come from one model, i.e. the check on whether a pathogen's internal agreement is
+#: really one model agreeing with itself.
+DEFAULT_METRIC_EXCLUSIONS = {"same_excl_same_model": "same_model"}
 
-    For pathogen P: ``same`` is every unordered pair of P's own columns (deduplicated — the pairs
-    frame is directed, so each within-pathogen pair appears twice and would otherwise be
-    double-counted), ``diff`` is every pair from one of P's columns to a column of some OTHER
-    pathogen (already counted once each, since only P-side rows are taken).
 
-    Returns ``{pathogen: {"same": array, "diff": array, "same_excl_same_model": array}}``.
-    ``same_excl_same_model`` repeats ``same`` without pairs whose two columns come from the same
-    model — the check on whether a pathogen's internal agreement is really one model agreeing with
-    itself.
+def pathogen_metric_boxes(pairs, exclusions=None):
+    """Per-GROUP same/different value arrays, aggregated from a :func:`column_metric_pairs` frame.
+
+    For group G: ``same`` is every unordered pair of G's own columns (deduplicated — the pairs frame
+    is directed, so each within-group pair appears twice and would otherwise be double-counted),
+    ``diff`` is every pair from one of G's columns to a column of some OTHER group (already counted
+    once each, since only G-side rows are taken).
+
+    The grouping column is literally named ``pathogen`` for historical reasons, but nothing here
+    reads a column NAME or a name prefix — feed it a pairs frame whose ``pathogen`` column holds
+    organism classes (as :mod:`eval_group_jaccard` does) and it aggregates by class unchanged.
+
+    ``exclusions`` maps an output key to a boolean column of ``pairs``; each one repeats the ``same``
+    box with those rows removed. Defaults to :data:`DEFAULT_METRIC_EXCLUSIONS`. The class-level
+    analysis adds ``same_excl_same_organism``, which is the part of a class's same-box that step 08's
+    per-pathogen figure does not already show.
+
+    Returns ``{group: {"same": array, "diff": array, **{key: array for each exclusion}}}``.
     """
+    exclusions = DEFAULT_METRIC_EXCLUSIONS if exclusions is None else exclusions
     out = {}
     for pathogen, d in pairs.groupby("pathogen", sort=False):
         same = d[d["category"] == "same_pathogen"]
         same = same[same["node"] < same["partner"]]  # one row per unordered pair
         diff = d[d["category"] == "different_pathogen"]
-        out[pathogen] = {
+        box = {
             "same": same["value"].to_numpy(float),
-            "same_excl_same_model": same.loc[~same["same_model"], "value"].to_numpy(float),
             "diff": diff["value"].to_numpy(float),
         }
+        for key, flag in exclusions.items():
+            box[key] = same.loc[~same[flag], "value"].to_numpy(float)
+        out[pathogen] = box
     return out
 
 
-def pathogen_metric_summary(boxes, n_columns):
-    """Tidy per-pathogen summary of :func:`pathogen_metric_boxes`, ordered by specificity.
+def pathogen_metric_summary(boxes, n_columns, exclusions=None):
+    """Tidy per-group summary of :func:`pathogen_metric_boxes`, ordered by specificity.
 
     ``specificity`` is ``same_median - diff_median`` — the same definition step 08's breakdown uses —
-    and the frame is sorted by it descending, which is also the row order used by the figure. A
-    pathogen whose specificity is negative agrees MORE with other pathogens' columns than with its
-    own; that is reported, not filtered.
+    and the frame is sorted by it descending, which is also the row order used by the figure. A group
+    whose specificity is negative agrees MORE with other groups' columns than with its own; that is
+    reported, not filtered.
+
+    ``exclusions`` must match what was passed to :func:`pathogen_metric_boxes`; each key ``k`` adds
+    an ``n_same_pairs_excl_...`` count and a ``{k}`` median (named ``same_median_excl_...``), placed
+    right after the plain ``same`` columns so the two read side by side.
     """
+    exclusions = DEFAULT_METRIC_EXCLUSIONS if exclusions is None else exclusions
     rows = []
     for pathogen, b in boxes.items():
-        rows.append({
-            "pathogen": pathogen, "n_columns": int(n_columns[pathogen]),
-            "n_same_pairs": len(b["same"]),
-            "n_same_pairs_excl_same_model": len(b["same_excl_same_model"]),
-            "n_diff_pairs": len(b["diff"]),
-            "same_median": np.median(b["same"]) if len(b["same"]) else np.nan,
-            "same_median_excl_same_model": (np.median(b["same_excl_same_model"])
-                                            if len(b["same_excl_same_model"]) else np.nan),
-            "diff_median": np.median(b["diff"]) if len(b["diff"]) else np.nan,
-        })
+        row = {"pathogen": pathogen, "n_columns": int(n_columns[pathogen]),
+               "n_same_pairs": len(b["same"])}
+        for key in exclusions:
+            row[f"n_same_pairs_{key.removeprefix('same_')}"] = len(b[key])
+        row["n_diff_pairs"] = len(b["diff"])
+        row["same_median"] = np.median(b["same"]) if len(b["same"]) else np.nan
+        for key in exclusions:
+            row[f"same_median_{key.removeprefix('same_')}"] = (
+                np.median(b[key]) if len(b[key]) else np.nan)
+        row["diff_median"] = np.median(b["diff"]) if len(b["diff"]) else np.nan
+        rows.append(row)
     out = pd.DataFrame(rows)
     out["specificity"] = out["same_median"] - out["diff_median"]
     return out.sort_values("specificity", ascending=False).reset_index(drop=True)

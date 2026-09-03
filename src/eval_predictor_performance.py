@@ -1,8 +1,12 @@
-"""Step 15 analysis engine — property/resemblance columns as predictors of pathogen activity.
+"""Steps 09/14 analysis engine — activity endpoints as predictors of each other, and property/
+resemblance columns as predictors of pathogen activity.
 
-Every column of the step-10 (physchem), step-11 (abx) and step-12 (cytotox) property blocks is treated as a
-PREDICTOR, and every curated activity endpoint as a binary TARGET, giving one performance value per
-(predictor, target) pair.
+Two independent orchestrators share the machinery below, split along a real data boundary: step 09's
+:func:`run_activity_self_performance` reads ONLY the step-07 bioactivity matrix (no property data
+enters it at all), while step 14's :func:`run_predictor_performance` additionally reads the step-08
+physchem/abx/cytotox property blocks and treats every one of their columns as a PREDICTOR, with every
+curated activity endpoint as a binary TARGET, giving one performance value per (predictor, target)
+pair.
 
 This is a descriptive association measure, not a trained model: nothing is fitted, nothing is split,
 and no seed is involved. Each number is a rank statistic over the full 1.35M-compound library.
@@ -23,7 +27,7 @@ Chosen per predictor from its own value type, resolved on the FULL column (see
     ``sklearn.roc_auc_score``. The predictor is ranked ONCE (ties averaged, so the result is exact);
     each target is then a 1000-element gather and sum. The direct route would be ~26k AUROC calls
     over 1.35M rows each — hours of work for numerically identical answers. Verified against sklearn
-    in the step-13 script's spot-check.
+    in the step-14 script's spot-check.
 *   **binary -> balanced accuracy.** AUROC of a two-valued score collapses to a single operating
     point, so the standard imbalanced-data pairing is used instead.
 
@@ -81,7 +85,7 @@ def selected_targets(selection_csv):
         raise ValueError(
             f"{len(wrong)} selected endpoint(s) in {os.path.basename(selection_csv)} are not "
             f"direction=higher: {wrong['column_name'].tolist()}. Binarization assumes top-N is "
-            "most active — resolve the direction before running step 13.")
+            "most active — resolve the direction before running step 09 or 14.")
 
     sel["target"] = sel["model_id"] + ":" + sel["column_name"]
     return sel[["model_id", "column_name", "organism", "target"]].reset_index(drop=True)
@@ -95,9 +99,9 @@ def available_targets(parquet_path, targets):
     written) will be selected in the config but missing from the cache.
 
     Excluding rather than raising is user-directed, and the excluded list is both printed and written
-    to ``13_excluded_targets.csv`` — a narrowed analysis must never be silent. The fix is to remove
-    ``07_score_matrix_full.parquet`` and re-run ``07_score_matrices.py``, which re-extracts from the
-    raw files.
+    to ``{step}_excluded_targets.csv`` by the caller (step 09 or step 14) — a narrowed analysis must
+    never be silent. The fix is to remove ``07_score_matrix_full.parquet`` and re-run
+    ``07_score_matrices.py``, which re-extracts from the raw files.
     """
     available = set(pq.ParquetFile(parquet_path).schema.names)
     keep = targets["target"].isin(available)
@@ -165,7 +169,7 @@ def target_top_indices(parquet_path, targets, top_n=ACTIVITY_BINARIZE_TOP_N, bat
 def predictor_index(property_csvs, families=PREDICTOR_FAMILIES):
     """Every predictor column across the property blocks, as a metadata DataFrame.
 
-    ``property_csvs`` is an iterable of per-family matrix CSVs (steps 10, 11, 12). The family is
+    ``property_csvs`` is an iterable of per-family matrix CSVs (all step 08). The family is
     read from each column's own ``{family}__`` prefix, not from which file it came from, so the
     split into one CSV per family cannot silently mislabel a predictor.
 
@@ -312,7 +316,7 @@ def activity_self_performance(parquet_path, targets, tops, n_total, batch=TARGET
         for pcol in chunk:
             v = df[pcol].to_numpy(dtype=float)
             n_nan = int(np.isnan(v).sum())
-            # Same pairwise-complete rule as the property predictors (see run_all).
+            # Same pairwise-complete rule as the property predictors (see run_predictor_performance).
             n_used, remap = n_total, None
             if n_nan:
                 valid = ~np.isnan(v)
@@ -356,7 +360,8 @@ def curated_predictor_performance(property_csvs, targets, tops, n_total,
                                   curated=CURATED_PREDICTORS):
     """The hand-picked :data:`default.CURATED_PREDICTORS` scored against a given target set.
 
-    Same kernels as :func:`run_all`, but over a shortlist rather than all 101 property columns, and
+    Same kernels as :func:`run_predictor_performance`, but over a shortlist rather than all 101
+    property columns, and
     against the consensus-collapsed pathogen targets rather than every selected endpoint. Every
     curated predictor is continuous, so the whole block is AUROC — verified here rather than
     assumed, since a binary column slipping in would silently be scored with the wrong metric.
@@ -379,7 +384,7 @@ def curated_predictor_performance(property_csvs, targets, tops, n_total,
             v = block[r.predictor].to_numpy(dtype=float)
             n_nan = int(np.isnan(v).sum())
             n_used, remap = n_total, None
-            if n_nan:  # pairwise-complete, as in run_all
+            if n_nan:  # pairwise-complete, as in run_predictor_performance
                 valid = ~np.isnan(v)
                 n_used = int(valid.sum())
                 remap = np.full(n_total, -1, dtype=np.int64)
@@ -418,6 +423,15 @@ def curated_predictor_performance(property_csvs, targets, tops, n_total,
 # --------------------------------------------------------------------------- #
 # Orchestrator                                                                 #
 # --------------------------------------------------------------------------- #
+def _bioactivity_total(parquet_path):
+    """Row count of the step-07 matrix. No property-CSV alignment check is needed here: step 09's
+    orchestrator never reads property data, so there is nothing to align it against.
+    """
+    n = pq.ParquetFile(parquet_path).metadata.num_rows
+    print(f"[activity-self] {n} compounds in {os.path.basename(parquet_path)}")
+    return n
+
+
 def _assert_key_alignment(property_csvs, parquet_path):
     """Every source must share one key ORDER, since the whole step is positional."""
     # Step 07's matrix carries `key` as the parquet INDEX, not as a column.
@@ -426,7 +440,7 @@ def _assert_key_alignment(property_csvs, parquet_path):
         k = pd.read_csv(path, usecols=[KEY_COL])[KEY_COL]
         if not k.equals(k07):
             raise ValueError(
-                f"Key order in {os.path.basename(path)} differs from the step-07 matrix; step 13 "
+                f"Key order in {os.path.basename(path)} differs from the step-07 matrix; step 14 "
                 "compares them positionally. Rebuild them from the same reference library before "
                 "continuing.")
     print(f"[predictor-perf] key order verified across {len(property_csvs) + 1} sources "
@@ -434,17 +448,67 @@ def _assert_key_alignment(property_csvs, parquet_path):
     return len(k07)
 
 
-def run_all(property_csvs, parquet_path, selection_csv, output_dir,
-            pathogens_csv=None, top_n=ACTIVITY_BINARIZE_TOP_N, coadd_model=COADD_MODEL_ID):
-    """Step 15 orchestrator. Writes the long per-pair CSV and the per-predictor summary."""
+def run_activity_self_performance(parquet_path, selection_csv, pathogens_csv, output_dir,
+                                  top_n=ACTIVITY_BINARIZE_TOP_N):
+    """Step 09 orchestrator — activity endpoints as predictors of each other.
+
+    Bioactivity-only: reads nothing but the step-07 matrix, no property/resemblance data enters this
+    analysis at all, which is exactly what lets it live in step 09 rather than alongside the
+    property-predictor analysis in step 14. Writes ``09_activity_self_performance.csv`` (all
+    selected targets) and ``09_pathogen_subset_self_performance.csv`` (restricted to the 15 pathogens
+    of interest, consensus models collapsed).
+    """
+    n_total = _bioactivity_total(parquet_path)
+
+    targets, excluded = available_targets(parquet_path, selected_targets(selection_csv))
+    if len(excluded):
+        excluded.to_csv(os.path.join(output_dir, "09_excluded_targets.csv"), index=False)
+        print(f"      -> 09_excluded_targets.csv ({len(excluded)} rows)")
+    print(f"[activity-self] {len(targets)} activity targets, binarized at top {top_n} "
+          f"(prevalence {top_n / n_total:.5%})")
+    tops = target_top_indices(parquet_path, targets, top_n=top_n)
+
+    print(f"\n[activity-self] {len(targets)} x {len(targets)} endpoint block")
+    self_perf = activity_self_performance(parquet_path, targets, tops, n_total)
+    self_path = os.path.join(output_dir, "09_activity_self_performance.csv")
+    self_perf.to_csv(self_path, index=False)
+
+    # The diagonal is 1.0 by construction; anything else means the ranking and the top-N selection
+    # have drifted apart, so it is checked rather than assumed.
+    diag = self_perf.loc[self_perf["self_pair"], "value"]
+    print(f"  self-pair AUROC: min {diag.min():.6f}, max {diag.max():.6f} "
+          f"({len(diag)} pairs — must all be 1.0)")
+    off = self_perf[~self_perf["self_pair"]]
+    print(f"  same-organism pairs: {int(off['same_organism'].sum())}, "
+          f"cross-organism: {int((~off['same_organism']).sum())}")
+    print(f"  -> {os.path.basename(self_path)} ({len(self_perf)} rows)")
+
+    print(f"\n[pathogen-subset] activity endpoints of the pathogens of interest")
+    sub_targets = pathogen_subset_endpoints(targets, pathogens_csv)
+    sub_tops = {t: tops[t] for t in sub_targets["target"]}
+    subset = activity_self_performance(parquet_path, sub_targets, sub_tops, n_total)
+    sub_path = os.path.join(output_dir, "09_pathogen_subset_self_performance.csv")
+    subset.to_csv(sub_path, index=False)
+    sub_diag = subset.loc[subset["self_pair"], "value"]
+    print(f"  self-pair AUROC: min {sub_diag.min():.6f}, max {sub_diag.max():.6f} "
+          f"({len(sub_diag)} pairs — must all be 1.0)")
+    print(f"  -> {os.path.basename(sub_path)} ({len(subset)} rows)")
+
+    return targets, tops, self_perf, subset
+
+
+def run_predictor_performance(property_csvs, parquet_path, selection_csv, output_dir,
+                              pathogens_csv=None, top_n=ACTIVITY_BINARIZE_TOP_N,
+                              coadd_model=COADD_MODEL_ID):
+    """Step 14 orchestrator. Writes the long per-pair CSV and the per-predictor summary."""
     from scipy.stats import rankdata
 
     n_total = _assert_key_alignment(property_csvs, parquet_path)
 
     targets, excluded = available_targets(parquet_path, selected_targets(selection_csv))
     if len(excluded):
-        excluded.to_csv(os.path.join(output_dir, "13_excluded_targets.csv"), index=False)
-        print(f"      -> 13_excluded_targets.csv ({len(excluded)} rows)")
+        excluded.to_csv(os.path.join(output_dir, "14_excluded_targets.csv"), index=False)
+        print(f"      -> 14_excluded_targets.csv ({len(excluded)} rows)")
     print(f"[predictor-perf] {len(targets)} activity targets, binarized at top {top_n} "
           f"(prevalence {top_n / n_total:.5%})")
     tops = target_top_indices(parquet_path, targets, top_n=top_n)
@@ -531,8 +595,8 @@ def run_all(property_csvs, parquet_path, selection_csv, output_dir,
     perf = pd.DataFrame(records)
     summary = pd.DataFrame(summaries)
 
-    perf_path = os.path.join(output_dir, "13_predictor_performance.csv")
-    summary_path = os.path.join(output_dir, "13_predictor_summary.csv")
+    perf_path = os.path.join(output_dir, "14_predictor_performance.csv")
+    summary_path = os.path.join(output_dir, "14_predictor_summary.csv")
     perf.to_csv(perf_path, index=False)
     summary.to_csv(summary_path, index=False)
 
@@ -543,44 +607,20 @@ def run_all(property_csvs, parquet_path, selection_csv, output_dir,
     print(f"  -> {os.path.basename(summary_path)} ({len(summary)} rows)")
     print(f"  chance level for both metrics: {PREDICTOR_CHANCE_LEVEL}")
 
-    # --- The activity endpoints as predictors of each other ---
-    print(f"\n[activity-self] {len(targets)} x {len(targets)} endpoint block")
-    self_perf = activity_self_performance(parquet_path, targets, tops, n_total)
-    self_path = os.path.join(output_dir, "13_activity_self_performance.csv")
-    self_perf.to_csv(self_path, index=False)
-
-    # The diagonal is 1.0 by construction; anything else means the ranking and the top-N selection
-    # have drifted apart, so it is checked rather than assumed.
-    diag = self_perf.loc[self_perf["self_pair"], "value"]
-    print(f"  self-pair AUROC: min {diag.min():.6f}, max {diag.max():.6f} "
-          f"({len(diag)} pairs — must all be 1.0)")
-    off = self_perf[~self_perf["self_pair"]]
-    print(f"  same-organism pairs: {int(off['same_organism'].sum())}, "
-          f"cross-organism: {int((~off['same_organism']).sum())}")
-    print(f"  -> {os.path.basename(self_path)} ({len(self_perf)} rows)")
-
-    # --- Same block, restricted to the 15 pathogens with consensus models collapsed ---
-    subset = curated = None
+    # --- The curated 12-predictor shortlist, restricted to the 15 pathogens of interest with
+    # consensus models collapsed. (Their bioactivity-only self-performance is step 09's job; this
+    # is the property-predictor shortlist scored against the same target set.) ---
+    curated = None
     if pathogens_csv:
-        print(f"\n[pathogen-subset] activity endpoints of the pathogens of interest")
         sub_targets = pathogen_subset_endpoints(targets, pathogens_csv)
         sub_tops = {t: tops[t] for t in sub_targets["target"]}
-        subset = activity_self_performance(parquet_path, sub_targets, sub_tops, n_total)
-        sub_path = os.path.join(output_dir, "13_pathogen_subset_self_performance.csv")
-        subset.to_csv(sub_path, index=False)
-        sub_diag = subset.loc[subset["self_pair"], "value"]
-        print(f"  self-pair AUROC: min {sub_diag.min():.6f}, max {sub_diag.max():.6f} "
-              f"({len(sub_diag)} pairs — must all be 1.0)")
-        print(f"  -> {os.path.basename(sub_path)} ({len(subset)} rows)")
-
-        # --- The curated 12-predictor shortlist against those same targets ---
         print(f"\n[curated] {sum(len(v) for v in CURATED_PREDICTORS.values())} predictors "
               f"x {len(sub_targets)} pathogen endpoints")
         curated = curated_predictor_performance(property_csvs, sub_targets, sub_tops,
                                                 n_total)
-        cur_path = os.path.join(output_dir, "13_curated_predictor_performance.csv")
+        cur_path = os.path.join(output_dir, "14_curated_predictor_performance.csv")
         curated.to_csv(cur_path, index=False)
         print(f"  -> {os.path.basename(cur_path)} ({len(curated)} rows; "
               f"{int(curated['same_model'].sum())} same-model pairs flagged)")
 
-    return perf, summary, self_perf, subset, curated
+    return perf, summary, curated

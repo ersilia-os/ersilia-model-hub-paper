@@ -59,9 +59,9 @@ import pandas as pd
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root, "..", "src"))
 
-from default import ENDPOINT_TYPE_REGEX  # noqa: E402
+from default import AIRTABLE_METADATA_FILE, ENDPOINT_TYPE_REGEX  # noqa: E402
 
-meta_path = os.path.join(root, "..", "data", "raw", "airtable_metadata.csv")
+meta_path = os.path.join(root, "..", "data", "raw", AIRTABLE_METADATA_FILE)
 col_index_path = os.path.join(root, "..", "output", "07_prediction_correlations", "07_column_index.csv")
 config_dir = os.path.join(root, "..", "config")
 out_path = os.path.join(config_dir, "08_endpoint_selection.csv")

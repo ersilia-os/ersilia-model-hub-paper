@@ -1,20 +1,21 @@
-"""Figures for the score-matrix analyses (steps 07–08).
+"""Figures for the score-matrix analyses (steps 07 and 09).
 
-Two panels, both downstream of the named full-library score matrix built by step 07:
+Three panels, all downstream of the named full-library score matrix built by step 07:
 
-  - :func:`pathogen_jaccard_figure` (step 08) — per-pathogen top-N Jaccard, same pathogen vs.
+  - :func:`pathogen_jaccard_figure` (step 09) — per-pathogen top-N Jaccard, same pathogen vs.
     different pathogen. A diagnostic rather than a paper panel, so it is plain matplotlib rather than
     a :class:`plotting_base.BasePlot` on the 3 cm cell grid: the y-axis carries per-pathogen endpoint
     and pair counts that go illegible at page width. It still draws only through
     :mod:`plotting_colors` hues, :func:`plotting_utils.box_with_jitter` and
     :func:`plotting_utils.sentence_case`, under the stylia print/article style, and writes PNG **and**
     PDF — the vector copy is the readable one.
+  - :func:`group_jaccard_figure` (step 09) — the same top-N Jaccard matrix one level up, aggregated
+    by organism class rather than by pathogen. Same diagnostic conventions as
+    :func:`pathogen_jaccard_figure`, meant to be read alongside it.
   - :class:`MeanRankDistributionPlot` (step 07) — distribution of each compound's mean percentile rank
     across every selected endpoint. A single distribution fits the page grid comfortably, so this one
     follows the standard publication convention in ``docs/figure_conventions.md``.
 """
-
-import os
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,7 +26,7 @@ import plotting_base  # noqa: F401  (applies the stylia print/article style on i
 from default import RANDOM_SEED
 from plotting_base import BasePlot
 from plotting_colors import INK, hue
-from plotting_utils import box_with_jitter, sentence_case
+from plotting_utils import box_with_jitter, save_diagnostic_figure, sentence_case
 
 # --------------------------------------------------------------------------- #
 # Step 08 — per-pathogen Jaccard                                               #
@@ -82,17 +83,81 @@ def pathogen_jaccard_figure(boxes, summary, *, cutoff, matrix_label, name, outpu
                        Patch(facecolor=c_diff, label="different pathogen")],
               loc="lower right", fontsize=6, frameon=True, facecolor="white", framealpha=0.85)
     fig.tight_layout()
+    return save_diagnostic_figure(fig, name, output_dir)
 
-    png_dir = os.path.join(output_dir, "png")
-    pdf_dir = os.path.join(output_dir, "pdf")
-    os.makedirs(png_dir, exist_ok=True)
-    os.makedirs(pdf_dir, exist_ok=True)
-    png_path = os.path.join(png_dir, name + ".png")
-    pdf_path = os.path.join(pdf_dir, name + ".pdf")
-    fig.savefig(png_path, dpi=300)
-    fig.savefig(pdf_path)
-    plt.close(fig)
-    return png_path, pdf_path
+
+# --------------------------------------------------------------------------- #
+# Step 09 part 2 — the same view one level up, by organism class               #
+# --------------------------------------------------------------------------- #
+#: Box -> hue for the class figure. Turquoise and crimson keep the meaning they have in
+#: :func:`pathogen_jaccard_figure` (agreement within the group / against everything else) so the two
+#: figures read as one family; cobalt is the new middle box.
+CLASS_BOX_HUES = {
+    "same": "turquoise",
+    "same_excl_same_organism": "cobalt",
+    "diff": "crimson",
+}
+
+CLASS_BOX_LABELS = {
+    "same": "same class",
+    "same_excl_same_organism": "same class, different pathogen",
+    "diff": "different class",
+}
+
+#: Vertical offset of each box within its class row, in row units.
+CLASS_BOX_OFFSETS = {"same": 0.26, "same_excl_same_organism": 0.0, "diff": -0.26}
+
+
+def group_jaccard_figure(boxes, summary, *, cutoff, matrix_label, name, output_dir):
+    """Per-CLASS same/different Jaccard — the organism-class counterpart of the step-09 figure.
+
+    Three boxes per class rather than two. The middle one, *same class, different pathogen*, is the
+    only part of the same-class distribution that step 09's per-pathogen figure does not already
+    show: the plain ``same`` box is dominated by within-pathogen pairs, which are exactly what step
+    08 published.
+
+    **A class of one organism draws no middle box**, because it has no same-class different-pathogen
+    pair at all. Under the 15-pathogen scoping that is four of the six classes (Mycobacteria, Fungi,
+    Protozoa, Helminths), and their ``same`` box is a verbatim copy of that pathogen's step-09 box.
+    The missing box is the point — it is the visual form of the degeneracy — so the row label carries
+    the organism count and the pair counts rather than leaving a reader to infer why a row is
+    sparser than its neighbours.
+
+    Plain matplotlib and not a :class:`plotting_base.BasePlot` panel, matching
+    :func:`pathogen_jaccard_figure`: the two are meant to be read side by side as a diagnostic pair,
+    and the row labels carry counts that go illegible on the 3 cm cell grid.
+    """
+    order = list(summary["organism_class"])
+    counts = summary.set_index("organism_class")
+    rng = np.random.default_rng(RANDOM_SEED)
+
+    n = len(order)
+    fig, ax = plt.subplots(figsize=(7.2, max(3.5, n * 0.78)))
+    labels = []
+    for i, organism_class in enumerate(order):
+        b = boxes[organism_class]
+        for key, offset in CLASS_BOX_OFFSETS.items():
+            if not len(b[key]):
+                continue
+            box_with_jitter(ax, b[key], i + offset, hue(CLASS_BOX_HUES[key]), vert=False,
+                            width=0.22, jitter_width=0.07, point_size=5, point_alpha=0.45,
+                            cap=POINT_CAP, rng=rng)
+        r = counts.loc[organism_class]
+        labels.append(f"{organism_class}\n{int(r.n_columns)} cols · {int(r.n_organisms)} org · "
+                      f"n={int(r.n_same_pairs)}/{int(r.n_same_pairs_excl_same_organism)}/"
+                      f"{int(r.n_diff_pairs)}")
+
+    ax.set_ylim(-0.8, n - 0.2)
+    ax.set_yticks(range(n))
+    ax.set_yticklabels(labels, fontsize=5)
+    ax.invert_yaxis()
+    ax.set_xlim(left=0)
+    ax.set_xlabel(sentence_case(f"top-{cutoff} Jaccard overlap  —  {matrix_label}"))
+    ax.legend(handles=[Patch(facecolor=hue(CLASS_BOX_HUES[k]), label=CLASS_BOX_LABELS[k])
+                       for k in CLASS_BOX_OFFSETS],
+              loc="lower right", fontsize=6, frameon=True, facecolor="white", framealpha=0.85)
+    fig.tight_layout()
+    return save_diagnostic_figure(fig, name, output_dir)
 
 
 # --------------------------------------------------------------------------- #

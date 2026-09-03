@@ -47,7 +47,8 @@ SMALL_SQUARE = (1.5, 1.5)
 QUARTER_WIDTH = 1.5
 
 # Height of the technical box row AND of the Biomedical Area strip, so the two sit in one band.
-# 30 mm: for the box row that is 3 task rows at a ~5.9 mm pitch; for the strip, 4 groups at 4.55 mm.
+# 30 mm: for the box row that is 3 task rows at a ~5.9 mm pitch; for the strip, 5 groups at 3.64 mm
+# (it was 4 groups at 4.55 mm before Antifungal was split out on 2026-08-07).
 _BOX_ROW_HEIGHT_CELLS = 1.0
 
 # Biomedical Area: a 25 mm strip, the narrowest panel in the repo. There is no room for a tick-label
@@ -57,9 +58,11 @@ NARROW_STRIP_MM = 25.0
 _STRIP_CROP_PAD_MM = 1.10      # measured; smaller than the box row's because there is no y label
 
 # Bar thickness as a fraction of the row pitch. Lower than matplotlib's 0.8 on purpose: the strip's
-# height is fixed by the box row (below), so with only four groups the pitch is wide, and 0.8 would
-# give a 3.6 mm bar with a 0.9 mm gap — a near-solid block. At 0.70 the bar is 3.2 mm (close to the
-# 2.9 mm mark weight used across this figure, and enough to seat a 5 pt label) with a 1.4 mm gap.
+# height is fixed by the box row (below), so with only a handful of groups the pitch is wide, and 0.8
+# would give a 3.6 mm bar with a 0.9 mm gap — a near-solid block. At 0.70 and the four groups this was
+# calibrated on, the bar was 3.2 mm (close to the 2.9 mm mark weight used across this figure, and
+# enough to seat a 5 pt label) with a 1.4 mm gap. At five groups it is 2.55 mm with a 1.09 mm gap —
+# still seats the label, but this fraction is the knob to revisit if a sixth group ever appears.
 _STRIP_BAR_FRACTION = 0.70
 
 # The three donut panels (licence, architecture, biomedical area) are one family: same width, same
@@ -103,7 +106,7 @@ def _narrow_strip_cells(n_bars, width_mm=NARROW_STRIP_MM):
     height as the technical box row**, so the two can sit side by side in one band.
 
     Height is therefore NOT derived from ``n_bars`` — the bar count only decides how the fixed axes
-    height is divided. At four groups that is an 18.19 mm axes over 4 rows, a 4.55 mm pitch.
+    height is divided. At five groups that is an 18.19 mm axes over 5 rows, a 3.64 mm pitch.
     """
     cols = (width_mm - _STRIP_CROP_PAD_MM) / CELL_MM
     return (_BOX_ROW_HEIGHT_CELLS, cols)
@@ -358,15 +361,15 @@ class TaskMetricBoxPlot(_HorizontalTaskPanel):
 
     **The per-task n is NOT in the tick labels**, unlike the earlier vertical version of this panel.
     A shared axis can carry only one label set, and coverage differs per metric (runtime is
-    129/57/10, image size and output dimension are both 131/58/19), so a single labelled ``n`` would
+    131/59/13, image size and output dimension are both 133/60/25), so a single labelled ``n`` would
     be wrong for two panels out of three. It lives in the summary CSV and the run log instead — **a
-    caption must state that the runtime box for Sampling rests on 10 of 19 models.**
+    caption must state that the runtime box for Sampling rests on 13 of 25 models.**
 
     A Task with **no** measurements still gets its slot, marked "not measured" in the neutral colour
     instead of being dropped: an absent box is information, an absent category is a misreading.
 
     The metric axis is logarithmic by default — all three metrics span more than a decade (runtime
-    16-1626 s, image size 291-10242 MB, output dimension 1-5000) and a linear axis flattens the bulk
+    16-1626 s, image size 290-10242 MB, output dimension 1-5000) and a linear axis flattens the bulk
     of each distribution against the floor.
 
     Parameters
@@ -384,7 +387,7 @@ class TaskMetricBoxPlot(_HorizontalTaskPanel):
 
     #: Box body and swarm geometry, in category-axis data units (1.0 = one task row). The swarm band
     #: is as wide as the box on purpose: these panels are ~6 mm per row, and at the old 0.10 jitter
-    #: 131 Annotation points piled into a ~1 mm line. The box is unfilled (house style), so the
+    #: 133 Annotation points piled into a ~1 mm line. The box is unfilled (house style), so the
     #: swarm is what carries the distribution and the box only marks the quartiles.
     _BOX_WIDTH = 0.5
     _JITTER = 0.20
@@ -421,7 +424,7 @@ class TaskOutputDimensionCirclesPlot(_HorizontalTaskPanel):
 
     A drop-in replacement for the box-and-swarm version of this panel: same task axis, same
     horizontal shape, same footprint. The swarm was the wrong mark for this column — Output Dimension
-    is heavily **tied** (68 of 131 Annotation models output a single value and 100 of them fall in the
+    is heavily **tied** (68 of 133 Annotation models output a single value and 102 of them fall in the
     1-9 bin; 100 and 1000 recur across Representation and Sampling), so jittered points piled onto a
     handful of x positions and the visual density said more about the jitter than about the data.
 
@@ -431,8 +434,8 @@ class TaskOutputDimensionCirclesPlot(_HorizontalTaskPanel):
     10² tick would read as "exactly 100", which is a real value in this column.
 
     *Area, not diameter, carries the count* — the perceptually correct choice for a count, and the
-    same convention as every other sized mark in the repo. The 9 non-empty bins span 2 to 100
-    models, a 50x range, which is a 7.1x range in diameter; ``_MAX_DIAMETER_MM`` pins the largest
+    same convention as every other sized mark in the repo. The 10 non-empty bins span 2 to 102
+    models, a 51x range, which is a 7.1x range in diameter; ``_MAX_DIAMETER_MM`` pins the largest
     circle just inside the row pitch, leaving the smallest at ~0.7 mm. There is **no in-panel size
     key** — at 34 x 31 mm there is nowhere to put one — so exact counts come from
     ``output_dimension_bins.csv``; read the panel for the pattern (Annotation outputs one value,
@@ -462,7 +465,7 @@ class TaskOutputDimensionCirclesPlot(_HorizontalTaskPanel):
 
         tasks = [t for t in TASK_COLORS if (df["Task"] == t).any()]
         vals = df[column]
-        # Values <= 0 would have no decade; this column has none (all 208 models are >= 1), but the
+        # Values <= 0 would have no decade; this column has none (all 218 models are >= 1), but the
         # guard keeps the panel honest if a -1 sentinel ever appears, as in the runtime column.
         ok = df[vals > 0]
         self.n_skipped = len(df) - len(ok)
@@ -504,9 +507,9 @@ def _donut(ax, labels, values, colors, *, ring=0.42, center_value=None, hatches=
 
     Labels never go on the wedges because there is nowhere to put them. At the width this is used
     for (30 mm, one cell) labelling around the ring is not merely tight but geometrically impossible:
-    ``"Non-commercial 1 (<1%)"`` is 20.07 mm of text and even the name alone is 13.46 mm, so labels on
+    ``"Non-commercial 4 (2%)"`` is 20.07 mm of text and even the name alone is 13.46 mm, so labels on
     two sides would consume ~27 mm of the 30 mm before the circle got any. The caller therefore supplies
-    a legend beneath, which is also what rescues the 1-of-208 wedge — at 1.7 degrees it can carry no
+    a legend beneath, which is also what rescues the 4-of-218 wedge — at 6.6 degrees it can carry no
     label of its own however much room the panel has.
 
     The hole is not decoration: it holds the **total**, which a pie has nowhere to put, so the panel
@@ -571,7 +574,7 @@ class DonutPlot(BasePlot):
         self.name = name
         self.counts = {l: int(v) for l, v in zip(labels, values)}
         # ``total`` overrides the wedge sum, and it matters wherever a model can belong to more than
-        # one wedge: the Biomedical Area groups sum to 94 across 92 models, and a hole reading 94 would
+        # one wedge: the Biomedical Area groups sum to 98 across 93 models, and a hole reading 98 would
         # state a model count that does not exist. Pass the distinct count; the discrepancy against the
         # legend rows is real and belongs in the caption, not hidden by quietly showing the sum.
         self.total = int(values.sum() if total is None else total)
@@ -627,14 +630,14 @@ class DonutPlot(BasePlot):
 class LicenseClassDonutPlot(DonutPlot):
     """Licence composition as a **donut** — the compositional counterpart to the ``license`` bar panel.
 
-    Slices are the four **reuse classes**, not the ten individual licences. That is a deliberate
-    limit, not a shortcut: four of the ten licences cover exactly one model each, which on 208 models
-    is a **1.7 degree wedge** — invisible, unlabellable, and impossible to tell apart from the other
-    three. The per-licence detail is what the bar panel is for; a circle can only carry the four-way
-    split. Even here Non-commercial is a single model, so its wedge is a hairline that exists on the
+    Slices are the four **reuse classes**, not the twelve individual licences. That is a deliberate
+    limit, not a shortcut: five of the twelve licences cover exactly one model each, which on 218
+    models is a **1.7 degree wedge** — invisible, unlabellable, and impossible to tell apart from the
+    other four. The per-licence detail is what the bar panel is for; a circle can only carry the
+    four-way split. Even here Non-commercial is 4 models (6.6 degrees), a sliver that exists on the
     ring only to be accounted for — it is the legend that actually tells a reader it is there.
 
-    Ordered by count, so the hairline wedge finishes at the 12 o'clock start line rather than being
+    Ordered by count, so the smallest wedge finishes at the 12 o'clock start line rather than being
     buried between two large ones, where it would read as a rendering artefact.
 
     Parameters
@@ -643,8 +646,14 @@ class LicenseClassDonutPlot(DonutPlot):
     """
 
     def __init__(self, ax=None, counts=None, cells=None):
-        by_class = (counts.groupby("class")["count"].sum()
-                    .reindex(list(LICENSE_CLASS_COLORS))
+        by_class = counts.groupby("class")["count"].sum()
+        # The reindex below silently drops any class with no LICENSE_CLASS_COLORS entry, which would
+        # take its models out of the donut without touching the total in the hole. Counterpart to the
+        # unmapped-licence guard in 01_ersilia_metadata.py: a new reuse class needs a colour here.
+        _uncoloured = sorted(set(by_class.index) - set(LICENSE_CLASS_COLORS))
+        if _uncoloured:
+            raise KeyError(f"Licence reuse classes with no LICENSE_CLASS_COLORS entry: {_uncoloured}")
+        by_class = (by_class.reindex(list(LICENSE_CLASS_COLORS))
                     .dropna()
                     .sort_values(ascending=False))
         DonutPlot.__init__(self, list(by_class.index), by_class.to_numpy(dtype=float),
@@ -683,9 +692,9 @@ class ArchitectureDonutPlot(DonutPlot):
 
 
 class BiomedicalAreaDonutPlot(DonutPlot):
-    """Biomedical Area groups as a donut — **one hue, four fill patterns**.
+    """Biomedical Area groups as a donut — **one hue, five fill patterns**.
 
-    The alternative to the `biomedical_area` bar strip on the same four groups and the same 92 Activity
+    The alternative to the `biomedical_area` bar strip on the same five groups and the same 95 Activity
     prediction models; both are rendered and one is picked at layout time.
 
     Every wedge is the Annotation crimson, because every model in this panel *is* an Annotation model —
@@ -693,6 +702,8 @@ class BiomedicalAreaDonutPlot(DonutPlot):
     (``BIOAREA_GROUP_HATCH``): solid for the largest group, then progressively lighter-inked patterns,
     so the ink ordering matches the size ordering, with the cross-hatch on the catch-all where it reads
     as "mixed". Patterns are white over the crimson, so a wedge still registers as red at a glance.
+    ``Antifungal`` is the one exception to the ink ordering — it mirrors ADMET's stroke to read as a
+    pair, since it was split out of ``Antimicrobial`` on 2026-08-07.
 
     That makes this the one panel in the set whose key is **not** redundant with a colour a reader
     could name: the legend swatches carry the patterns, so it cannot describe a mark the ring does not
@@ -708,8 +719,8 @@ class BiomedicalAreaDonutPlot(DonutPlot):
         DonutPlot.__init__(self, labels, counts["count"].to_numpy(dtype=float),
                            [TASK_COLORS["Annotation"]] * len(labels),
                            hatches=[BIOAREA_GROUP_HATCH.get(l, "") for l in labels],
-                           # Distinct models, set by the script — NOT the wedge sum, which is 94
-                           # because two models carry areas in two different groups.
+                           # Distinct models, set by the script — NOT the wedge sum, which is 98
+                           # because three models carry areas in two different groups.
                            total=counts.attrs.get("n_models"),
                            name="biomedical_area_donut", ax=ax, cells=cells)
 
@@ -728,8 +739,10 @@ class TaskSubtaskWafflePlot(BasePlot):
     does not have to travel next to ``task_subtask``. Legend labels carry each subtask's count, which
     is exactly what the waffle itself conveys badly.
 
-    The legend is also what makes the panel square. The 16 x 13 grid alone crops landscape (1.23 at
-    60 mm); the legend band adds height below it and squares the panel up. Going the other way is
+    The legend is also what makes the panel square. The 16-wide grid alone crops landscape (1.23 at
+    60 mm, measured when 208 models filled exactly 13 rows); the legend band adds height below it and
+    squares the panel up. At 218 models the grid runs to a 14th row, so it is marginally taller than
+    those measurements and the legend has correspondingly less work to do. Going the other way is
     counter-productive: a portrait grid is narrower than the legend, which then sets the width while
     the extra rows add height (measured at 60 mm: 13 cols 0.78, 14 cols 0.83, 15 cols 0.94, **16 cols
     1.05**, 18 cols 1.22).
@@ -743,15 +756,16 @@ class TaskSubtaskWafflePlot(BasePlot):
     are kept: they are the whole point of this legend, and they are not what overflowed.
 
     ``self.blank`` records how many trailing cells of the grid went unfilled, so a caller can flag a
-    ragged last row. 16 columns is also one of the few counts that divides 208 exactly (13 full
-    rows); 14, 15, 17 and 18 all leave a ragged row.
+    ragged last row. **A ragged row is now unavoidable**: 16 columns divided 208 exactly (13 full
+    rows), but 218 = 2 x 109 has no divisor in the usable 13-18 range, so every column count leaves a
+    remainder. 16 is kept for the aspect ratio measured above and leaves 6 blank cells in row 14.
 
     Parameters
     ----------
     sub   : subtask counts DataFrame with columns ``value`` (short display label) and ``count``,
             already ordered by parent task then count within task.
-    cols  : squares per row. The default 16 divides the current 208 models into exactly 13 full
-            rows; a different total leaves ``self.blank`` cells empty in the last row.
+    cols  : squares per row. The default 16 leaves ``self.blank`` = 6 cells empty in the last row at
+            the current 218 models; it divided the earlier 208 into exactly 13 full rows.
     cells : footprint on the reference grid as ``(rows, cols)``.
     """
 

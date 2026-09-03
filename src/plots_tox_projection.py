@@ -1,14 +1,13 @@
 """Step 13 figures — reference-library projection coloured by predicted toxicity.
 
 Reads ONLY the two small summary CSVs written by :func:`eval_tox_projection.run_all` — never the
-step-11 property table or the eos1klk coordinate table. One :class:`GridPlot` small-multiples
+step-08 property matrix or the eos1klk coordinate table. One :class:`GridPlot` small-multiples
 figure: one panel per selected toxicity endpoint, silver background = full-library density,
 crimson overlay = that endpoint's ``PROJECTION_TOP_N`` most toxic compounds (a rank cutoff, never
-a score threshold), all on the same :data:`default.TOX_PROJECTION_METHOD` layout used by step 10's
+a score threshold), all on the same :data:`default.TOX_PROJECTION_METHOD` layout used by step 11's
 pathogen figures, so the two are directly comparable.
 """
 
-import json
 import os
 
 import matplotlib.colors as mcolors
@@ -27,19 +26,19 @@ POINT_COLOR = hue("crimson")
 POINT_SIZE = 4
 
 #: 24 endpoints over 6 columns → a 4x6-cell footprint, i.e. the full 180 mm print width at the
-#: same ~30x30 mm panel size as step 10's pathogen grid.
+#: same ~30x30 mm panel size as step 11's pathogen grid.
 GRID_COLS = 6
 
 
 class ToxicityProjectionGridPlot(GridPlot):
     """One panel per endpoint, all sharing one projection layout and background.
 
-    Every panel carries the same silver full-library density — step 09's grid, reused by steps 10,
-    11 and 12 — so panels are comparable across all four families at a glance. The overlay is the
+    Every panel carries the same silver full-library density — step 11's grid, reused by steps 12,
+    13 and 14 — so panels are comparable across all four families at a glance. The overlay is the
     endpoint's top-N points only, never a continuous score, so no colour scale is needed, just the
     one marker key.
 
-    Despite the name this class is **family-agnostic** and is also used by step 10's physchem
+    Despite the name this class is **family-agnostic** and is also used by step 14's physchem
     panels; ``name`` and ``legend_label`` are the only things that differ between callers.
     """
 
@@ -63,7 +62,7 @@ class ToxicityProjectionGridPlot(GridPlot):
             })
 
         self.build_grid(items, cols=cols,
-                        name=name or f"12_{method}_top{top_n}_toxicity",
+                        name=name or f"13_{method}_top{top_n}_toxicity",
                         panel_fn=self._panel, edge_xlabel=f"{method.upper()} 1",
                         edge_ylabel=f"{method.upper()} 2")
         if self.is_available:
@@ -98,14 +97,14 @@ def _read(output_dir, fname, **kw):
 
 def save_tox_projection_figures(output_dir, endpoints, background_path,
                                 method=TOX_PROJECTION_METHOD, top_n=PROJECTION_TOP_N):
-    """Build the step-12 toxicity figure and record its footprint in ``figure_cells.json``.
+    """Build the step-13 toxicity figure and record its footprint in ``figure_cells.json``.
 
-    ``background_path`` is step 09's ``09_{method}_background.csv`` — the same full-library density
-    grid the pathogen (step 09) and abx (step 11) panels sit on, reused rather than recomputed so all
+    ``background_path`` is step 11's ``11_{method}_background.csv`` — the same full-library density
+    grid the pathogen (step 11) and abx (step 12) panels sit on, reused rather than recomputed so all
     three families are directly comparable.
     """
     background = pd.read_csv(background_path) if os.path.exists(background_path) else pd.DataFrame()
-    top_n_table = _read(output_dir, f"12_top{top_n}_per_endpoint.csv")
+    top_n_table = _read(output_dir, f"13_top{top_n}_per_endpoint.csv")
     footprints = {}
     plot = ToxicityProjectionGridPlot(method, background, top_n_table, endpoints, top_n=top_n)
     if plot.is_available:
@@ -113,5 +112,5 @@ def save_tox_projection_figures(output_dir, endpoints, background_path,
         footprints[plot.name] = list(plot.cells)
         print(f"  figure: {plot.name}")
     else:
-        print(f"  [skip figure] 12_{method}_top{top_n}_toxicity: insufficient data")
+        print(f"  [skip figure] 13_{method}_top{top_n}_toxicity: insufficient data")
     merge_figure_cells(output_dir, footprints)

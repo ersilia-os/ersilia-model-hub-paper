@@ -176,7 +176,7 @@ Thirteen panels, sized for a **183 × 170 mm** page laid out as rows of three 60
 | `image_size`, `output_dimension` | (1,1.122) | 33.7 × 30 |
 | `license_class_donut`, `biomedical_area_donut` | (1.167,0.792) | **24.9** × 35 |
 | `docker_architecture` (2 legend rows, so shorter) | (1.0,0.792) | **24.9** × 30.5 |
-| `biomedical_area` (4 groups, names on the bars) | (1,0.797) | **25** × 30 |
+| `biomedical_area` (5 groups, names on the bars) | (1,0.797) | **25** × 30 |
 | `target_organism` (10 categories) | (1.525,1.525) | 45.75 × 45.75 |
 | `pathogen_circles` | (2.5,2.5) | crop **63 × 76** |
 
@@ -204,8 +204,9 @@ front of its own bar, in the **default black** every other label uses.
 
 *Height is shared with the technical box row* (`_BOX_ROW_HEIGHT_CELLS`, 30 mm declared → **31.24 mm**
 cropped against the row's 31.17–31.27), so the strip and the three box panels form one 145 mm band.
-Height therefore does **not** follow the bar count — the four groups only decide how the fixed
-18.19 mm axes is divided, giving a 4.55 mm pitch. `_STRIP_BAR_FRACTION = 0.70` rather than
+Height therefore does **not** follow the bar count — the five groups only decide how the fixed
+18.19 mm axes is divided, giving a 3.64 mm pitch (it was 4.55 mm at the four groups this was
+calibrated on, before Antifungal was split out on 2026-08-07). `_STRIP_BAR_FRACTION = 0.70` rather than
 matplotlib's 0.8 because at that pitch 0.8 gives a 3.6 mm bar with a 0.9 mm gap, a near-solid block;
 0.70 leaves a 3.2 mm bar (close to the figure's 2.9 mm mark weight, and enough to seat a 5 pt label)
 with a 1.4 mm gap.
@@ -228,24 +229,26 @@ Placement must run **after `tight_layout`** — it weighs a label width fixed in
 width layout is still free to change — so `FieldBarPlot.measure_labels` does it just before saving. In-bar
 labels are also **not clipped**, so one overrunning a spine would spill outside the plot area and *set*
 the crop width, breaking the fixed 25 mm. The script prints the placement split and the widest label
-against the axes every run (currently 2 centred inside, 2 after their bars; 17.74 mm axes vs 10.92 mm
+against the axes every run (currently 2 centred inside, 3 after their bars; 16.39 mm axes vs 10.92 mm
 for *Antimicrobial*). The count-axis label is shortened to **"Models"** for the same reason —
 "Number of models" is 17.6 mm and would overhang.
 
-**Four groups, over Activity prediction models only** (`BIOAREA_GROUP` / `ACTIVITY_SUBTASK` in
-`default.py`, signed off 2026-08-02): **Antimicrobial 50, ADMET 29, Antiviral 7, Other 8** of
-**92** models. `default.py` holds the classification and the evidence for every membership; the
+**Five groups, over Activity prediction models only** (`BIOAREA_GROUP` / `ACTIVITY_SUBTASK` in
+`default.py`, signed off 2026-08-02, Antifungal split out 2026-08-07, `Leishmaniasis` added
+2026-08-14): **Antimicrobial 51, ADMET 27, Antiviral 7, Antifungal 3, Other 10** of
+**93** models. `default.py` holds the classification and the evidence for every membership; the
 per-area breakdown is written to `biomedical_area_groups.csv`. Substantive groups run by size
-descending with the catch-all pinned **last** however large it grows, so `Other` (8) sits below
-`Antiviral` (7) — the residual is always the bottom bar, even when it is not the shortest.
+descending with the catch-all pinned **last** however large it grows, so `Other` (10) sits below
+`Antiviral` (7) and `Antifungal` (3) — the residual is always the bottom bar, even when it is not
+the shortest.
 
 *Restricting to Activity prediction is what keeps `Other` honest.* `Any` (no area declared) is **22 of
-the 39** "Property calculation or prediction" models — generic property predictors like logP and
-solubility have no area to declare — but only **4 of the 92** Activity prediction ones. So `Any` folds
-into `Other` without turning it into a catch-all, and the four bars account for *every* model in the
-subtask: nothing dropped, nothing unexplained. Across all of Annotation `Other` would have been 30 and
-outranked Antiviral 4:1.
-**The cost is ADMET: 44 → 29**, because ADMET splits 29 Activity / 15 Property across the two
+the 40** "Property calculation or prediction" models — generic property predictors like logP and
+solubility have no area to declare — but only **6 of the 93** Activity prediction ones. So `Any` folds
+into `Other` without turning it into a catch-all, and the five bars account for *every* model in the
+subtask: nothing dropped, nothing unexplained. Across all of Annotation `Other` would have been 33 and
+outranked Antiviral nearly 5:1.
+**The cost is ADMET: 43 → 27**, because ADMET splits 27 Activity / 16 Property across the two
 Annotation subtasks and that split is not semantically clean. ADMET therefore falls behind
 Antimicrobial here, and the bar means "ADMET models annotated as Activity prediction", not "ADMET
 models". The two antimicrobial models excluded are genuinely not activity endpoints — `eos4n4d`
@@ -253,14 +256,16 @@ models". The two antimicrobial models excluded are genuinely not activity endpoi
 novelty/synthesizability filter).
 
 **Biomedical Area is multi-value, so counts are of distinct MODELS, not area assignments.** Grouping
-absorbs most of the multiplicity: 10 of the 12 multi-area Annotation models have all their areas inside
-one group (AMR+Pneumonia, AMR+Diarrhoea, Gonorrhea+AMR). **Two models still span two groups and are
-counted in both** — `eos2zmb` (Cancer + AIDS) and `eos7kpb` (ADMET + Malaria + Tuberculosis) — so the
-four bars **sum to 94 against 92 models**. That is the metadata's own claim, left unresolved rather
+absorbs most of the multiplicity: 16 of the 22 multi-area Annotation models have all their areas inside
+one group (AMR+Pneumonia, AMR+Diarrhoea, Gonorrhea+AMR). **Five models still span two groups and are
+counted in both** — `eos2zmb` (Cancer + AIDS), `eos3f8h` (AMR + Candidiasis + Fungal infections),
+`eos60mw` (COVID-19 + Leishmaniasis), `eos7kpb` (ADMET + Malaria + Tuberculosis) and `eos8jx6`
+(AMR + Candidiasis) — so the five bars **sum to 98 against 93 models**. That is the metadata's own claim, left unresolved rather
 than forced into one bucket; the script prints it every run and a caption should note it.
 
-**Two deliberate stretches in "Antimicrobial".** *Malaria* (8) is *Plasmodium falciparum*, a
-**protozoan**, inside "antimicrobial" only on the broad clinical definition; *Schistosomiasis* (2) is
+**Three deliberate stretches in "Antimicrobial".** *Malaria* (7) and *Leishmaniasis* (1) are
+*Plasmodium falciparum* and *Leishmania major*, both **protozoa**, inside "antimicrobial" only on the
+broad clinical definition; *Schistosomiasis* (2) is
 *Schistosoma mansoni*, a multicellular **helminth**, not a microorganism at all. Both are kept because
 Ersilia's own naming already treats them that way — the S. mansoni model's slug is literally
 `antimicrobial-activity-smansoni`. **A caption saying "antimicrobial" therefore covers antibacterial,
@@ -302,9 +307,9 @@ non-Annotation.** The invariant now holds with no exceptions, so the named-value
 Annotation hue is unconditionally correct rather than correct-in-advance.
 
 `Any` takes **silver** in `target_organism`, the repo's reserved neutral for a catch-all bucket; that
-panel carries no key, so a caption must state what its two colours mean. On the fresh snapshot
-Target Organism `Any` is 40 Annotation / 61 Representation / 23 Sampling, Biomedical Area `Any` is
-27 / 61 / 23.
+panel carries no key, so a caption must state what its two colours mean. On the frozen 2026-08-07
+snapshot Target Organism `Any` is 40 Annotation / 61 Representation / 24 Sampling, Biomedical Area
+`Any` is 27 / 61 / 24.
 
 **The Task/Subtask coupling still matters for the next such fix.** The figures read task two ways:
 `task_subtask`, the waffle and the `*_by_subtask` panels colour by Subtask through `SUBTASK_PARENT`,
@@ -322,6 +327,14 @@ because six models were added and four changed Status in the same pull: Annotati
 **58 → 61** (−1 `eos93h2`, +3 new featurizers, +1 new projector), Sampling **19 → 23**, total Ready
 **208 → 214**. By subtask: Activity prediction 92 → 91, Featurization 52 → 54, Generation 8 → 12,
 Projection 6 → 7, Property calculation 39 → 39, Similarity search 11 → 11.
+
+**Superseded by the frozen 2026-08-07 snapshot** (see `scripts/README.md`). The counts above are kept
+as the record of the 07-30 → 08-06 move; the figures now draw the 08-07 numbers: total Ready
+**214 → 220**, Task Annotation **130 → 135**, Representation **61 → 61**, Sampling **23 → 24**. By
+subtask: Activity prediction 91 → 95, Property calculation 39 → 40, Generation 12 → 13, Featurization
+54 → 54, Projection 7 → 7, Similarity search 11 → 11. The named-organism invariant was re-checked and
+still holds with no exceptions: 95 Ready models carry a named Target Organism and 108 a named
+Biomedical Area, **0 of either non-Annotation**.
 
 #### The two `*_by_subtask` stacks are sized to a page budget (2026-08-05)
 
@@ -437,8 +450,9 @@ be redundant. Data comes from the `*_by_subtask_counts.csv` cross-tabs written b
 
 **Waffle (`TaskSubtaskWafflePlot`).** `task_subtask_waffle` draws one square per model in reading
 order through the subtasks, so each subtask is a contiguous run and each task a contiguous band of
-one hue. 16 columns divides the current 208 models into exactly 13 full rows; a different total
-leaves `self.blank` trailing cells empty, which the script prints. It *shows* n instead of stating
+one hue. 16 columns divided the earlier 208 models into exactly 13 full rows; at the current 218
+(= 2 x 109, no divisor in the usable range) the last row is ragged and `self.blank` reads 6, which
+the script prints. It *shows* n instead of stating
 it — every model is one mark — at the cost of precision: 52 vs 39 means counting.
 
 This is the **one subtask panel that carries its own legend** (2 columns beneath the grid, labels
@@ -448,7 +462,8 @@ grid alone crops landscape (1.23 at 60 mm), and the legend band beneath it bring
 back to square. Counter-intuitively, *reducing* the columns makes it worse, not better — a portrait
 grid is narrower than the legend, which then fixes the content width while the extra rows add height.
 Measured crop aspects at 60 mm: 13 cols 0.78, 14 cols 0.83, 15 cols 0.94, **16 cols 1.05**, 18 cols
-1.22. Only 13 and 16 columns divide 208 without a ragged last row. Legend spacing (`handlelength`,
+1.22. Only 13 and 16 columns divided the earlier 208 without a ragged last row; no column count
+divides 218. Legend spacing (`handlelength`,
 `labelspacing`, `columnspacing`, `borderpad`) is tightened from the matplotlib defaults because the
 band's height is the knob that tunes the panel's aspect.
 
@@ -500,13 +515,13 @@ category is a misreading.
 
 ***`n` is no longer in the tick labels.*** The old vertical panels put each task's `n` in its own tick
 label; a shared axis can carry only one label set, and coverage differs per metric — runtime is
-**129/57/10**, image size and output dimension are both **131/58/19**. One labelled `n` would
+**131/59/13**, image size and output dimension are both **133/60/25**. One labelled `n` would
 therefore be wrong for two panels out of three. It moved to `technical_metrics_summary.csv` and the
-run log, which means **a caption must state that the runtime box for Sampling rests on 10 of 19
+run log, which means **a caption must state that the runtime box for Sampling rests on 13 of 25
 models** — that is a real transfer of load-bearing information out of the figure.
 
 **`output_dimension` is circles, not a box** (`TaskOutputDimensionCirclesPlot`). Output Dimension is
-heavily **tied** — 68 of 131 Annotation models output a single value (100 of them fall in the 1-9
+heavily **tied** — 68 of 133 Annotation models output a single value (102 of them fall in the 1-9
 bin, which is the circle the panel draws), and 100 and 1000 recur across Representation and
 Sampling — so a swarm piled onto a handful of x positions and its visual density
 described the jitter rather than the data. Instead: one circle per (task, decade), **area proportional
@@ -514,7 +529,7 @@ to the number of models**, at the bin's *geometric centre* so it sits between th
 that bound it. A circle centred on the 10² tick would read as "exactly 100", which is a real and
 common value in this column.
 
-The 9 non-empty bins span **2 to 100 models** — a 50× range, so 7.1× in diameter.
+The 10 non-empty bins span **2 to 102 models** — a 51× range, so 7.1× in diameter.
 `_MAX_DIAMETER_MM = 4.6` pins the largest circle just inside the 5.9 mm row pitch, leaving the
 smallest at ~0.7 mm. **There is no size key** — at 34 × 31 mm there is nowhere to put one — so the
 panel is for the pattern (Annotation outputs one value; Representation spreads across three decades;
@@ -526,9 +541,9 @@ without touching the row.
 
 | batch | Annotation | Representation | Sampling |
 |---|---|---|---|
-| 100 | 129/131 | 57/58 | **10/19** |
-| 1,000 | 123/131 | 55/58 | **0/19** |
-| 10,000 | 95/131 | 47/58 | **0/19** |
+| 100 | 131/133 | 59/60 | **13/25** |
+| 1,000 | 125/133 | 58/60 | **1/25** |
+| 10,000 | 96/133 | 50/60 | **1/25** |
 
 100 is chosen so generative models appear at all. **The trade-off is what the number then means:** at
 this batch size the median CP3/CP1 ratio is **0.86** — running 100 molecules takes no longer than
@@ -604,22 +619,23 @@ dropping the count would lose the only number nothing else states. `ARCH_DISPLAY
 around the `+` for the same reason.
 
 *The hole shows a **model** count, not always the wedge sum.* `DonutPlot(total=...)` overrides it, and
-`biomedical_area_donut` uses it: its groups sum to **94 across 92 models** because two models carry
-areas in two groups, so the hole reads 92 while the legend rows add to 94. The discrepancy is real and
+`biomedical_area_donut` uses it: its groups sum to **98 across 93 models** because five models carry
+areas in two groups, so the hole reads 93 while the legend rows add to 98. The discrepancy is real and
 belongs in the caption rather than being hidden by quietly showing the sum.
 
-**`license_class_donut` shows the four reuse classes, not the ten licences** — Permissive 104 (50 %),
-Copyleft 76 (37 %), Not recorded 27 (13 %), Non-commercial 1 (<1 %), colours matching the `license`
-bar panel. That is a hard limit, not a shortcut: four of the ten licences cover exactly one model
-each, which on 208 models is a **1.7° wedge**, invisible and impossible to label or tell apart from
-the other three. Per-licence detail is the bar panel's job. Wedges run in descending order so the
-Non-commercial hairline finishes at the 12 o'clock start line rather than sitting between two large
-wedges, where it would read as a rendering artefact.
+**`license_class_donut` shows the four reuse classes, not the twelve licences** — Permissive 116
+(53 %), Copyleft 67 (31 %), Not recorded 31 (14 %), Non-commercial 4 (2 %), colours matching the
+`license` bar panel. That is a hard limit, not a shortcut: five of the twelve licences cover exactly
+one model each, which on 218 models is a **1.7° wedge**, invisible and impossible to label or tell
+apart from the other four. Per-licence detail is the bar panel's job. Wedges run in descending order
+so the smallest wedge finishes at the 12 o'clock start line rather than sitting between two large
+wedges, where it would read as a rendering artefact. A licence value with no `LICENSE_CLASS` entry
+**raises** (guard added 2026-08-14) instead of being dropped from the donut.
 
 *Why a legend rather than labels around the ring.* At 25 mm, labelling around the circle is
-geometrically impossible, not merely tight: `"Non-commercial 1 (<1%)"` is **20.07 mm** of text and the
+geometrically impossible, not merely tight: `"Non-commercial 4 (2%)"` is **20.07 mm** of text and the
 name alone is **13.46 mm**, so labels on two sides would take more than the whole panel before the ring
-got any. It is also what rescues the 1.7° wedge, which can carry no label of its own at any panel size.
+got any. It is also what rescues the smallest wedge, which can carry no label of its own at any panel size.
 
 *Calibrating the width needs a full script run.* stylia wipes matplotlib's font cache on import, so the
 **first figure of a process draws with fallback text metrics** and measures ~0.6 mm small — an isolated
@@ -917,6 +933,35 @@ is common wherever a matrix has a diagonal (`active_overlap_containment` in step
   footprint `(max(2, ceil(n/4)), 3)` — i.e. `MODELS_PER_CELL = 4`. Colours from
   `ACTIVE_INACTIVE_COLORS` (crimson / silver); legend sits **above** the axes because every row of
   the plot area is occupied by boxes.
+
+### 10_reference_library_projection.py (`src/plots_projection.py`)
+
+Two `GridPlot` families in one output dir, both on the **same** silver full-library density
+background (`10_{method}_background.csv`, a 60×60 grid normed to its own 99th percentile) so they can
+be read side by side. Both overlay a **top-N rank cutoff**, never a continuous score, so neither
+needs a colour scale — only a marker key.
+
+- **`10_{method}_top1000_pathogens`** (`save_projection_figures`) — **4×4 cells (120 mm)**, 15
+  pathogen panels over `GRID_COLS = 4` at ~30 mm each, one trailing empty cell. Overlay is a single
+  crimson layer; one `marker_legend` on the first axis.
+- **`10_umap_coadd_top1000_pathogens`** (`save_coadd_projection_figures`) — **3×3 cells (90 mm)**, 9
+  organism panels over `COADD_GRID_COLS = 3`, UMAP only (`COADD_PROJECTION_METHOD`). Up to **4 point
+  layers per panel**, one per `eos3dys` endpoint, as `shades("crimson", n, floor=0.5)`. Layers are
+  drawn **darkest+largest first, palest+smallest last** (`COADD_SIZE_RANGE = (6, 2)`, ascending
+  `zorder`): the endpoints are strongly correlated readouts of one organism, so equal-sized layers
+  would let the last one hide the rest, whereas this reads as a pale core in a darker halo.
+  **No `marker_legend`** — the endpoint names are printed inside the panel *in their own shade*, so
+  the annotation is the key. A shared legend is impossible here because the endpoint names differ
+  per panel. `COADD_SHADE_FLOOR` is **0.5**, above the generic `SHADE_LIGHTEN_FLOOR` of 0.4, because
+  the shade also colours text and thin letter strokes need more contrast than filled dots.
+
+Both entry points route through `merge_figure_cells`, so the manifest ends with **5** entries. This
+matters: with two families writing one `figure_cells.json`, a raw `json.dump` truncates it to
+whichever family saved last.
+
+Same-hue tints are correct here (variants of one organism) but wrong for set membership: an
+intersection layer needs a third, distinct *hue*, not a tint of either side's — see `shades()` in
+`src/plotting_colors.py` for why.
 
 ## Gotchas
 

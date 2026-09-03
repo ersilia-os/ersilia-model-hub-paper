@@ -33,6 +33,32 @@ def hue(name, lighten=None):
     """
     return _AC.get(name, lighten=lighten)
 
+
+# Lightest tint allowed for a generic shade ramp (see ``shades``). Sits between
+# SUBTASK_LIGHTEN_FLOOR (0.5) and the 0.35 used by plots_chembl_curation._sequential, both bounded
+# by the same "no invisible colours" rule in docs/figure_conventions.md.
+SHADE_LIGHTEN_FLOOR = 0.4
+
+
+def shades(name, n, *, floor=SHADE_LIGHTEN_FLOOR):
+    """``n`` shades of ONE hue: the base hue first, lightening towards ``floor``.
+
+    Use this where the things being coloured are **variants of one category** and should still read
+    as that category at a glance — several assay readouts of one organism, nested series of one
+    track, segments of one parent task. The tint carries "same thing, other variant", and the ramp
+    direction carries an order, so the sequence must be meaningful rather than arbitrary.
+
+    Do NOT use it for set membership or for genuinely unrelated categories: a tint of a hue reads as
+    a weaker version of that hue, so e.g. an intersection layer drawn as pale crimson would read as
+    "some of the crimson set" rather than as its own group. Spend a distinct hue there instead.
+
+    ``floor`` is capped short of white on purpose; see :data:`SHADE_LIGHTEN_FLOOR`.
+    """
+    if int(n) <= 1:
+        return [hue(name)]
+    return [hue(name, lighten=None if float(l) == 1.0 else float(l))
+            for l in np.linspace(1.0, floor, int(n))]
+
 # Two distinct colour sets so the groupings never share hues:
 #   - Task   : cool trio (blue / teal / orange)
 #   - Source : warm trio (red / green / gold), reused in the treemap dots
@@ -81,11 +107,8 @@ def _subtask_colors():
     out = {}
     for task, hue_name in TASK_HUES.items():
         subs = [s for s in SUBTASK_ORDER if SUBTASK_PARENT[s] == task]
-        lightens = (np.linspace(1.0, SUBTASK_LIGHTEN_FLOOR, len(subs)) if len(subs) > 1
-                    else [1.0])
-        for s, l in zip(subs, lightens):
-            lighten = None if float(l) == 1.0 else float(l)
-            out[SUBTASK_DISPLAY.get(s, s)] = _AC.get(hue_name, lighten=lighten)
+        for s, colour in zip(subs, shades(hue_name, len(subs), floor=SUBTASK_LIGHTEN_FLOOR)):
+            out[SUBTASK_DISPLAY.get(s, s)] = colour
     return out
 
 
@@ -184,10 +207,19 @@ LICENSE_CLASS = {
     "BSD-3-Clause": "Permissive",
     "CC0-1.0": "Permissive",
     "CC-BY-4.0": "Permissive",
+    # NCSA = the University of Illinois/NCSA Open Source License, an OSI-approved MIT/BSD-style
+    # licence with no share-alike duty. Added 2026-08-14 with the manual metadata revision.
+    "NCSA": "Permissive",
     "GPL-3.0": "Copyleft",
     "AGPL-3.0": "Copyleft",
     "LGPL-3.0": "Copyleft",
     "CC-BY-NC-ND-4.0": "Non-commercial",
+    # Both added 2026-08-14 with the manual metadata revision. `Non-commercial` is a bare Airtable
+    # value, not an SPDX identifier: the upstream terms forbid commercial reuse without naming a
+    # standard licence. It maps to the class of the same name, which is the honest reading — a
+    # reuser learns exactly as much from it as the metadata records.
+    "Non-commercial": "Non-commercial",
+    "CC-BY-NC-SA-4.0": "Non-commercial",
     LICENSE_MISSING: LICENSE_MISSING,
 }
 
@@ -196,9 +228,11 @@ LICENSE_CLASS = {
 #
 # Non-commercial gets FUCHSIA, the one place in this figure that hue is used. The convention
 # deprioritises it because it reads as emphasis — which is exactly what is needed here: the class holds
-# a single model (1/208 = a 1.7 degree wedge in the donut ring), so a
-# well-behaved hue would simply disappear. Emphasis is also editorially correct, since it is the only
-# licence in the hub that forbids commercial reuse.
+# 4 of 218 models (a 6.6 degree wedge in the donut ring), so a well-behaved hue would simply
+# disappear. Emphasis is also editorially correct, since these are the only licences in the hub that
+# forbid commercial reuse. It was a single model (1.7 degrees) until the 2026-08-14 manual metadata
+# revision added `Non-commercial` x2 and `CC-BY-NC-SA-4.0`; still small enough that the argument for
+# fuchsia holds.
 LICENSE_CLASS_COLORS = {
     "Permissive": _AC.turquoise,
     "Copyleft": _AC.periwinkle,
@@ -244,9 +278,16 @@ ARCH_COLORS = {
 # so these are deliberately long. At three or four repeats the ring showed finger-thick stripes and
 # dots the size of the ring's own thickness, which read as damage rather than as a fill. Paired with
 # the thin ``hatch.linewidth`` set in plotting_base.
+#
+# The ink ordering holds EXCEPT for the mirrored pair (2026-08-07). ``Antifungal`` was split out of
+# ``Antimicrobial`` and takes the backslash, mirroring ADMET's forward slash, so the two read as a
+# related pair rather than as a new independent category. Its ink therefore matches ADMET's despite
+# it being the smallest substantive group (3 models vs 29) — a deliberate exception, chosen because
+# every pattern lighter than the dots aliased against the ring edge on a wedge that thin.
 BIOAREA_GROUP_HATCH = {
     "Antimicrobial": "",
     "ADMET": "/////////",
+    "Antifungal": "\\\\\\\\\\\\\\\\\\",
     "Antiviral": ".........",
     "Other": "xxxxxxxxx",
 }

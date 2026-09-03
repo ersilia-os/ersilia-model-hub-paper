@@ -8,6 +8,30 @@ AIRTABLE_SHARE_URL = (
 AIRTABLE_BASE_ID = "appR6ZwgLgG8RTdoU"
 AIRTABLE_VIEW_ID = "viwy0inGR1xv2Tpfe"
 
+# The Airtable metadata is FROZEN at this snapshot. Every consumer reads the dated file named by
+# AIRTABLE_METADATA_FILE, never a generic "airtable_metadata.csv", so the analysis cannot drift
+# when the live base changes. To refresh: bump the date here and re-run 00_download_data.py, which
+# downloads the new dated file and leaves the previous one in place for comparison.
+#
+# The shared view excludes models with Status "Archived", so an archived model disappears from the
+# export entirely rather than showing up with a changed Status.
+# 2026-08-12: re-snapshotted after fixing an NA-coercion bug in 00_download_data.py that turned the
+# literal License value `None` into an empty cell. The 2026-08-07 and earlier files carry that
+# defect and must not be used to judge whether a model declares a licence.
+AIRTABLE_SNAPSHOT_DATE = "2026-08-12"
+# 2026-08-14: the whole catalogue was revised BY HAND offline — descriptions and interpretations
+# rewritten, and corrections to Task/Subtask (4 models), Biomedical Area (9), Target Organism (5),
+# License (22), Publication Type (9) and Publication Year (28). The corrected export was placed at
+# data/raw/airtable_metadata_manual.csv, which SUPERSEDES the dated snapshot above. The revisions
+# have NOT yet been synced back to Airtable, so re-downloading would undo them — which is why the
+# filename is pinned to the manual file rather than derived from AIRTABLE_SNAPSHOT_DATE.
+# The date constant is kept as the record of the last genuine Airtable pull, and is still what both
+# 00 and 01 print for provenance.
+# TO REVERT once the sync lands: bump AIRTABLE_SNAPSHOT_DATE, restore
+#   AIRTABLE_METADATA_FILE = f"airtable_metadata_{AIRTABLE_SNAPSHOT_DATE.replace('-', '')}.csv"
+# and re-run 00_download_data.py.
+AIRTABLE_METADATA_FILE = "airtable_metadata_manual.csv"
+
 REFERENCE_LIBRARY_URL = (
     "https://raw.githubusercontent.com/ersilia-os/"
     "ersilia-model-hub-maintained-inputs/main/inputs/reference_library_smiles.csv"
@@ -43,8 +67,8 @@ RUNTIME_COLUMNS = {
 }
 RUNTIME_NOT_MEASURED = -1
 #: Batch size reported in the paper figure. Changing this changes which models the runtime panel can
-#: show at all, because coverage collapses as the batch grows: at 100 molecules it is 129/131
-#: Annotation, 57/58 Representation and 10/19 Sampling; at 1,000 it is 123/131, 55/58 and **0/19**.
+#: show at all, because coverage collapses as the batch grows: at 100 molecules it is 131/133
+#: Annotation, 59/60 Representation and 13/25 Sampling; at 1,000 it is 125/133, 58/60 and **1/25**.
 #: 100 is chosen so generative models appear, and that is the whole reason — at this batch size the
 #: median CP3/CP1 ratio is 0.86, i.e. running 100 molecules takes no longer than running 1, so for
 #: annotation and representation models the number is dominated by container startup rather than
@@ -85,44 +109,60 @@ BIOAREA_DISPLAY = {
 }
 
 # The Annotation subtask the grouped Biomedical Area panel is built from. Restricting to it is what
-# keeps the "Other" bucket honest: `Any` (no disease area) is 22 of the 39 "Property calculation or
-# prediction" models but only 4 of the 92 Activity prediction ones, because generic property
+# keeps the "Other" bucket honest: `Any` (no disease area) is 22 of the 40 "Property calculation or
+# prediction" models but only 6 of the 93 Activity prediction ones, because generic property
 # predictors (logP, solubility) have no area to declare.
 ACTIVITY_SUBTASK = "Activity prediction"
 
-# Biomedical Area -> one of four groups, for the compact grouped panel. Signed off 2026-08-02.
+# Biomedical Area -> one of five groups, for the compact grouped panel. Signed off 2026-08-02,
+# revised 2026-08-07 when the fungal areas were split out of Antimicrobial (see below), extended
+# 2026-08-14 with `Leishmaniasis`.
 #
 # Every raw Airtable value must appear here: the counting step raises on an unmapped value rather than
-# dropping it, so a new area added upstream fails loudly instead of vanishing from the figure.
+# dropping it, so a new area added upstream fails loudly instead of vanishing from the figure. That
+# guard is what caught `Fungal infections` arriving with eos3f8h on the 2026-08-07 snapshot, and
+# `Leishmaniasis` arriving on eos60mw in the 2026-08-14 manual revision.
 #
 # Membership was checked against each model's Target Organism, not inferred from the area name:
 #   Peptic ulcer disease  -> eos9eyo, Helicobacter pylori (bacterial, not the NSAID aetiology)
 #   Diarrheal diseases    -> all Campylobacter / E. coli, i.e. Gram-negative bacteria
-#   Candidiasis, Mycetoma -> Candida albicans, Madurella mycetomatis (fungal; antifungal counts)
 #
-# TWO DELIBERATE STRETCHES, kept because Ersilia's own naming already treats them this way (the
+# ANTIFUNGAL IS ITS OWN GROUP (2026-08-07). Candidiasis and Mycetoma previously sat inside
+# Antimicrobial; `Fungal infections` (eos3f8h) made the fungal set large enough to name explicitly,
+# so all three moved out together. Organisms behind it: Candida albicans (eos3f8h, eos8jx6) and
+# Madurella mycetomatis (eos4f95). It is the smallest group (3 models) and is NOT the catch-all —
+# that is still `Other` (10 models).
+#
+# THREE DELIBERATE STRETCHES, kept because Ersilia's own naming already treats them this way (the
 # S. mansoni model's slug is literally `antimicrobial-activity-smansoni`):
 #   Malaria         -> Plasmodium falciparum is a PROTOZOAN, inside "antimicrobial" only on the broad
 #                      clinical definition.
+#   Leishmaniasis   -> Leishmania major is likewise a PROTOZOAN (added 2026-08-14 with the manual
+#                      metadata revision, which gave eos60mw/cidalsdb a second area alongside
+#                      COVID-19). Grouped with Malaria for exactly the same reason, so the two
+#                      protozoal diseases are never split across groups.
 #   Schistosomiasis -> Schistosoma mansoni is a multicellular HELMINTH, not a microorganism at all.
-# A caption that says "antimicrobial" therefore covers antibacterial, antifungal, antiprotozoal and
-# antihelminthic activity. Rename the group to "Anti-infective" if that overclaims for a given venue.
+# With the fungal split, a caption saying "antimicrobial" now covers antibacterial, antiprotozoal and
+# antihelminthic activity — NOT antifungal, which is reported separately. Rename the group to
+# "Anti-infective" if that still overclaims for a given venue.
 #
-# `Any` (no area declared) goes to Other rather than being dropped, so the four groups account for
-# every Activity prediction model. At this subtask it is only 4 models, so Other stays a genuine
-# residual instead of the 26-model catch-all it would be across all of Annotation.
+# `Any` (no area declared) goes to Other rather than being dropped, so the five groups account for
+# every Activity prediction model. At this subtask it is only 6 models, so Other stays a genuine
+# residual (10 models) instead of the catch-all it would be across all of Annotation.
 BIOAREA_GROUP = {
     "ADMET": "ADMET",
     "Antimicrobial resistance": "Antimicrobial",
     "Tuberculosis": "Antimicrobial",
     "Malaria": "Antimicrobial",
+    "Leishmaniasis": "Antimicrobial",
     "Pneumonia": "Antimicrobial",
     "Diarrheal diseases": "Antimicrobial",
     "Gonorrhea": "Antimicrobial",
     "Schistosomiasis": "Antimicrobial",
-    "Candidiasis": "Antimicrobial",
-    "Mycetoma": "Antimicrobial",
     "Peptic ulcer disease": "Antimicrobial",
+    "Candidiasis": "Antifungal",
+    "Mycetoma": "Antifungal",
+    "Fungal infections": "Antifungal",
     "COVID-19": "Antiviral",
     "AIDS": "Antiviral",
     "Hepatitis B": "Antiviral",
@@ -259,7 +299,7 @@ PROJECTION_PREDS_SUBDIR = "eos1klk_projection"
 PROJECTION_METHODS = ["pca", "umap", "tsne", "tmap"]
 
 # ---------------------------------------------------------------------------
-# Basic physicochemical descriptors (step 11)
+# Basic physicochemical descriptors (step 08)
 # ---------------------------------------------------------------------------
 # eos4djh (datamol-basic-descriptors, Task=Representation, Subtask=Featurization) computes 22
 # basic descriptors — molecular weight, cLogP, H-bond donors/acceptors, ring and atom counts —
@@ -267,7 +307,7 @@ PROJECTION_METHODS = ["pca", "umap", "tsne", "tmap"]
 # the Datamol API, not predictions, so they carry no training set and no leakage dimension.
 # Like PROJECTION_MODEL_ID above, its Task is not "Annotation", so 00_download_data.py's
 # automatic Section 4 loop never sees it and it is fetched by an explicit call instead. Its
-# predictions are nonetheless filed alongside the annotation models, since step 11 reads them
+# predictions are nonetheless filed alongside the annotation models, since step 08 reads them
 # from that one folder.
 PHYSCHEM_MODEL_ID = "eos4djh"
 
@@ -282,6 +322,20 @@ PROJECTION_BINS = 60
 # threshold — so it never needs a threshold sign-off, only a count.
 PROJECTION_TOP_N = 1000
 
+# Second step-11 figure family: the same projection, but highlighted by COADD_MODEL_ID (eos3dys,
+# CoAdd-trained) instead of the per-pathogen ChEMBL models — an independent predictor over 9 of the
+# same organisms, so agreement between the two families is evidence and disagreement is a finding.
+#
+# Only UMAP of the four PROJECTION_METHODS is drawn, for the same reason as TOX_PROJECTION_METHOD
+# below: 9 organism panels at four methods each is 4x the panels for no added insight, and UMAP is
+# the layout the pathogen figures are read from. Revisable — the engine takes the method as an
+# argument.
+#
+# Note eos3dys publishes NO CONSENSUS_COLUMN (its 22 outputs are independent per-strain, per-assay
+# endpoints), so its top PROJECTION_TOP_N is ranked PER ENDPOINT by that endpoint's own score, not
+# per organism. Still a pure rank cutoff — no threshold.
+COADD_PROJECTION_METHOD = "umap"
+
 # ---------------------------------------------------------------------------
 # Step 13 — toxicity endpoints projected onto the same reference-library layout.
 # Only UMAP of the four PROJECTION_METHODS is drawn: 24 endpoint panels at four methods each
@@ -289,7 +343,7 @@ PROJECTION_TOP_N = 1000
 # from. Revisable — the step-13 engine takes the method as an argument.
 TOX_PROJECTION_METHOD = "umap"
 
-# Column-name prefix for the step-11 cytotoxicity table, matching the
+# Column-name prefix for the step-13 cytotoxicity table, matching the
 # {prefix}__{model_id}__{column_name} convention shared with the bioactivity matrix
 # (build_named_library_matrix in eval_correlations) and antibiotic resemblance.
 TOX_PREFIX = "cytotox"
@@ -306,7 +360,7 @@ TOX_PREFIX = "cytotox"
 TOX_RANK_DESCENDING = True
 
 # ---------------------------------------------------------------------------
-# Step 10 — which physchem descriptors get a UMAP panel
+# Step 14 — which physchem descriptors get a UMAP panel
 # ---------------------------------------------------------------------------
 # Three of the 22 descriptors are drawn on the shared library UMAP (user-directed, 2026-08-07). The
 # other 19 are summarised by their distributions only.
@@ -325,32 +379,33 @@ PHYSCHEM_PROJECTION_ENDPOINTS = ("mw", "tpsa", "clogp")
 PHYSCHEM_PREFIX = "physchem"
 
 # ---------------------------------------------------------------------------
-# Step 14 — pathogen hits vs antibiotic-resemblance hits on the library UMAP.
-# The subset of config/antibiotic_resemblance.csv's 55 selected endpoints drawn against every
-# pathogen: nine spanning the three kinds of evidence — one continuous learned score, two
-# similarity counts against AntibioticDB, and six substructure/class flags. User-directed.
+# Step 12 — pathogen top-1000 x eos19mt antibiotic-class Fisher enrichment.
 #
-# Two names differ from how they were requested and are corrected here to the config's spelling:
-#   betalactan_motif -> betalactam_motif (eos2xeq)      b_lactam_all -> b_lactams_all (eos19mt)
-#
-# Only abx_score is continuous. The rest are binary flags or small integer counts, so step 12's
-# highlight rule (every compound > 0, capped at PROJECTION_TOP_N) is what defines the abx side —
-# NOT a rank cutoff. Three of these nine have fewer than PROJECTION_TOP_N positives library-wide
-# (carbepenem_motif 346, ansamycins_rifamycins_macrolides 577, b_lactams_all 733) and so are drawn
-# exhaustively; the rest hit the cap and are an arbitrary subset of their positives.
-ABX_OVERLAP_ENDPOINTS = [
-    "abx_score",
-    "num_sim_0_5_all",
-    "num_sim_0_5_subset",
-    "fluoroquinolone_motif",
-    "nitrofuran_motif",
-    "betalactam_motif",
-    "b_lactams_all",
-    "carbepenem_motif",
-    "ansamycins_rifamycins_macrolides",
-]
+# For each pathogen and each of eos19mt's antibiotic structural classes, tests whether being in
+# the pathogen's top PROJECTION_TOP_N (by consensus_score, from step 11) is associated with
+# belonging to that class (value > 0), via scipy.stats.fisher_exact over the full reference
+# library. Scoped to eos19mt only (config/antibiotic_resemblance.csv's model_id == eos19mt rows,
+# 38 classes) rather than the mixed multi-model set the earlier Jaccard-overlap version used.
+ABX_ENRICHMENT_MODEL_ID = "eos19mt"
+
+# One-sided: the question asked is "enriched", not "enriched or depleted". A cell where the top-N
+# is significantly DEPLETED of a class reads as non-significant here rather than as its own
+# finding — user-directed, since "enrichment" was the literal ask.
+ABX_ENRICHMENT_ALTERNATIVE = "greater"
+
+# The heatmap colours log2(odds ratio), diverging around 0 (odds ratio == 1, no association).
+# Some cells are exactly 0 or infinite — e.g. a class with a single non-zero compound
+# library-wide is either entirely inside or entirely outside a pathogen's top-N — which would
+# otherwise blow out a linear colour scale. Clipped at this bound for COLOUR only; the printed
+# cell text and the CSVs always carry the true (possibly 0/inf) odds ratio.
+ABX_ENRICHMENT_LOG2OR_CAP = 10
+
+# Conventional significance bands for the heatmap's asterisk annotation, evaluated on the RAW
+# (unadjusted) per-cell p-value — a display convenience, not a claim that multiplicity is
+# accounted for. The long-format CSV also carries a Benjamini-Hochberg-adjusted column for that.
+ABX_ENRICHMENT_SIG_THRESHOLDS = (0.05, 0.01, 0.001)
 # ---------------------------------------------------------------------------
-# Step 13 — property/resemblance columns as predictors of pathogen activity.
+# Step 14 — property/resemblance columns as predictors of pathogen activity.
 #
 # Each activity endpoint (the selected == "Yes" rows of config/08_endpoint_selection.csv, all of
 # them direction == "higher") is binarized into a two-class target: its ACTIVITY_BINARIZE_TOP_N
@@ -364,7 +419,7 @@ ABX_OVERLAP_ENDPOINTS = [
 ACTIVITY_BINARIZE_TOP_N = 1000
 
 # The three predictor blocks, in figure order. Each is one column-name prefix of the
-# {family}__{model_id}__{column_name} convention, and each gets its own step-13 figure — 101
+# {family}__{model_id}__{column_name} convention, and each gets its own step-14 figure — 101
 # predictors on a single shared x-axis would leave ~1.8 mm per category at the 180 mm print width.
 PREDICTOR_FAMILIES = ["physchem", "cytotox", "abx"]
 
@@ -378,7 +433,7 @@ PREDICTOR_METRICS = {"continuous": "auroc", "binary": "balanced_accuracy"}
 PREDICTOR_CHANCE_LEVEL = 0.5
 
 # ---------------------------------------------------------------------------
-# Step 15, pathogen-subset variant — the activity endpoints of the 15 pathogens of interest only,
+# Steps 09/14, pathogen-subset variant — the activity endpoints of the 15 pathogens of interest only,
 # with each ChEMBL antimicrobial model reduced to its single consensus column.
 #
 # Those models contribute up to 52 highly correlated sub-endpoints each (one per source ChEMBL/
@@ -400,7 +455,7 @@ CONSENSUS_COLUMN = "consensus_score"
 # capture "Candida glabrata", and "Streptococcus pneumoniae" would capture S. parasanguinis and
 # S. salivarius — all distinct organisms in the curation. Fix the spelling instead.
 
-# The curated 12-predictor subset scored against the pathogen-subset targets (step 13's sixth
+# The curated 12-predictor subset scored against the pathogen-subset targets (step 14's sixth
 # figure): a hand-picked, user-directed shortlist of the 101 property columns, three families in one
 # panel. All twelve are continuous, so the whole panel is AUROC on one scale — unlike the per-family
 # figures, where the abx block mixes AUROC and balanced accuracy.
@@ -421,7 +476,7 @@ CURATED_PREDICTORS = {
 CURATED_FAMILY_HUES = {"physchem": "turquoise", "cytotox": "crimson", "abx": "cobalt"}
 
 # ---------------------------------------------------------------------------
-# Step 14 — the AUROC matrix (predictors x pathogen activity endpoints).
+# Step 10 — the AUROC matrix (predictors x pathogen activity endpoints).
 #
 # organism_class has no natural order, so the axis order is DECLARED here: the three bacterial
 # classes together first, then the eukaryotic pathogens roughly by cell complexity. This is a
@@ -461,25 +516,42 @@ AUROC_MATRIX_CENTER = 0.5
 # without it the white point would drift off chance and the figure would imply a neutral at 0.6.
 AUROC_MATRIX_CMAP = "crimson_cobalt"
 
+# The raw columns each merged predictor below is built from (2026-09-02, user-directed
+# simplification). Not predictors in their own right any more — just the inputs to
+# `eval_auroc_matrix.merged_predictor_scores`, which percentile-ranks each one (over the full
+# library, or the row-masked subset for step 10's non-abx section) and sums them per compound.
+# `physchem` (mw/clogp/tpsa) is not here — it was dropped from the matrix entirely, not merged.
+MERGED_PREDICTOR_GROUPS = {
+    "cytotox": ["cytotoxicity_ic50",                              # eos3dys
+                "ic50_hepg2_72h_5um", "ic50_hepg2_72h_10um",       # eos3le9
+                "cytotoxicity_hepg2", "cytotoxicity_hskmc", "cytotoxicity_imr90"],  # eos42ez
+    "abx": ["abx_score", "num_sim_0_5_all", "num_sim_0_5_subset"],
+}
+
+# SUM, not mean: purely a display-magnitude choice, not a scientific one. Both are a monotone rescale
+# of each other (mean = sum / n_columns for a fixed n), so ranking, AUROC and top-N selection on the
+# merged column come out byte-identical either way — nothing downstream depends on which is used.
+PREDICTOR_MERGE_AGG = "sum"
+
 # Column blocks of the matrix, in x-axis order: (block label, family, [column_name, ...]).
 # The bioactivity block is not listed — it is the 59 activity endpoints, ordered separately.
-# Order within each block is user-directed: cytotoxicity by model_id, the other two as given.
+# Each property family is now the SINGLE rank-sum column merged_predictor_scores produces (see
+# MERGED_PREDICTOR_GROUPS above) — 12 raw columns (6 cytotox + 3 abx + 3 physchem) collapsed to 2
+# (2026-09-02, user-directed). physchem is dropped, not merged: mw/clogp/tpsa measure different
+# things from each other and from "how cytotoxic/antibiotic-like", so summing their ranks together
+# would not be a meaningful quantity the way a within-family sum is.
 AUROC_MATRIX_BLOCKS = [
-    ("cytotoxicity", "cytotox", ["cytotoxicity_ic50",            # eos3dys
-                                 "ic50_hepg2_72h_5um", "ic50_hepg2_72h_10um",   # eos3le9
-                                 "cytotoxicity_hepg2", "cytotoxicity_hskmc",
-                                 "cytotoxicity_imr90"]),         # eos42ez
-    ("abx resemblance", "abx", ["abx_score", "num_sim_0_5_all", "num_sim_0_5_subset"]),
-    ("physchem", "physchem", ["mw", "clogp", "tpsa"]),
+    ("cytotoxicity", "cytotox", ["rank_sum"]),
+    ("abx resemblance", "abx", ["rank_sum"]),
 ]
 
-# Step 16's per-organism merge: each organism's endpoints are collapsed into ONE score per compound
+# Step 10's per-organism merge: each organism's endpoints are collapsed into ONE score per compound
 # before any AUROC is computed, so a pathogen's weight in the figure comes from the pathogen and not
 # from how many assays it happens to have (P. falciparum has 13 endpoints, H. pylori has 1).
 #
 # rank_pct, not zscore: percentile ranks are bounded [0, 1] and robust to outliers and to endpoints
 # on unrelated native scales, so no single endpoint dominates an organism's mean. Unbounded z-scores
-# would let one long-tailed endpoint carry the 11-endpoint E. coli and 13-endpoint P. falciparum
+# would let one long-tailed endpoint carry the 12-endpoint E. coli and 13-endpoint P. falciparum
 # aggregates. This is also the scaling step 07's mean-rank section already averages over.
 ORGANISM_MERGE_METHOD = "rank_pct"
 
@@ -496,7 +568,7 @@ ORGANISM_MERGE_METHOD = "rank_pct"
 ORGANISM_MERGE_AGG = "mean"
 
 # ---------------------------------------------------------------------------
-# Step 16's second view: how many of the row's actives fall in the column's top N.
+# Step 10's second view: how many of the row's actives fall in the column's top N.
 #
 # Different question from the AUROC matrix. AUROC asks "does this predictor RANK the row organism's
 # actives highly, across the whole library"; this asks "how many of the row's 1000 actives are among
@@ -513,10 +585,26 @@ ORGANISM_MERGE_AGG = "mean"
 # cells with NO shared compound at all from those with some. No bin holds more than a third.
 OVERLAP_MATRIX_BINS = [0, 1, 10, 25, 50, 100, 200, 400, 750]
 
+# The overlap view was compared at three cutoffs (100 / 1000 / 10000) while the analysis was being
+# developed, since how many actives two organisms share depends heavily on where the line is drawn.
+# The 100 and 10000 panels were dropped 2026-09-01 (see scripts/README.md's "Pipeline
+# reorganization" notes) — the pipeline now draws only ACTIVITY_BINARIZE_TOP_N (1000). No constant
+# is kept here for the retired cutoffs; `plots_auroc_matrix.OverlapMatrixPlot` still takes `top_n` as
+# a parameter if a comparison figure is ever wanted again.
+
 # SEQUENTIAL, not diverging: unlike AUROC, an overlap count has no meaningful midpoint — its neutral
-# is 0, at the end of the scale. Cobalt matches the overlap heatmaps in step 08 and the EU OpenScreen
-# validation, so every set-overlap figure in the paper reads on one hue.
-OVERLAP_MATRIX_HUE = "cobalt"
+# is 0, at the end of the scale.
+#
+# MULTI-HUE, not the plain single-hue cobalt ramp step 08 and the EU OpenScreen validation use
+# (user-directed, 2026-08-31: a plain white->cobalt ramp left this scale's mid-to-high bins looking
+# nearly identical). This is a deliberate departure from "every set-overlap figure in the paper reads
+# on one hue" — step 10's overlap matrices no longer match step 08/05's plain cobalt sequential
+# style. Ordered by DECREASING perceptual luminance (amber 0.77 -> turquoise 0.64 -> cobalt 0.45 ->
+# periwinkle 0.41, see plotting_utils.spectrum_cmap), so the ramp still darkens monotonically and
+# reads unambiguously as a magnitude scale even though hue changes at each stop — unlike a
+# qualitative/rainbow map (stylia's SpectralColormap), whose hues carry no rank and were rejected for
+# exactly that reason in step 10's AUROC colour history above.
+OVERLAP_MATRIX_SPECTRUM = ("amber", "turquoise", "cobalt", "periwinkle")
 
 # The self-overlap diagonal is 1000/1000 by construction while the largest real value is 724, so it is
 # BLANKED in the figure (dashed cell) and excluded from the column means. Follows the convention in

@@ -1,13 +1,13 @@
 """Step 12 figures — antibiotic-resemblance endpoints on the reference-library UMAP.
 
 Reads ONLY the small summary CSVs written by :mod:`eval_abx_matrix` (the per-endpoint highlight
-table) and step 09's existing ``09_umap_background.csv`` — never the 1.35M x 55 matrix or the raw
+table) and step 11's existing ``11_umap_background.csv`` — never the 1.35M x 55 matrix or the raw
 prediction files, per the repo's "feed figures from summary CSVs" rule.
 
 One small-multiples grid, one panel per endpoint: silver background = full-library density in UMAP
 space, crimson overlay = that endpoint's highlighted compounds.
 
-**The highlight rule is NOT step 10's rank cutoff**, because these endpoints are not continuous.
+**The highlight rule is NOT step 11's rank cutoff**, because these endpoints are not continuous.
 54 of the 55 selected columns are binary flags or small integer counts, so a plain "top 1000" would
 pad most panels with arbitrarily chosen zero-valued compounds. Instead each panel shows every
 compound with a NON-ZERO value, capped at :data:`default.PROJECTION_TOP_N` (highest value first).
@@ -15,7 +15,6 @@ Nothing is ever padded with zeros, so a panel with 3 hits draws 3 points. Each p
 ``n_shown/n_nonzero`` so a capped panel is never mistaken for an exhaustive one.
 """
 
-import json
 import os
 
 import matplotlib.colors as mcolors
@@ -27,6 +26,7 @@ from default import PROJECTION_TOP_N
 from plotting_base import GridPlot
 from plotting_colors import hue
 from plotting_utils import marker_legend, merge_figure_cells
+from plots_projection import _grid_extent, _pivot
 
 BACKGROUND_CMAP = None  # set lazily; sequential_cmap import kept local to avoid a cycle
 POINT_COLOR = hue("crimson")
@@ -59,26 +59,6 @@ def _wrap_name(name, width=NAME_WRAP):
     if current:
         lines.append(current)
     return "\n".join(lines)
-
-
-def _pivot(df, value_col, n_bins):
-    """Tidy ``bin_i, bin_j, value_col`` rows -> a ``(n_bins, n_bins)`` array, NaN where missing."""
-    arr = np.full((n_bins, n_bins), np.nan)
-    if len(df):
-        arr[df["bin_i"].to_numpy(), df["bin_j"].to_numpy()] = df[value_col].to_numpy()
-    return arr
-
-
-def _grid_extent(df):
-    """``(xmin, xmax, ymin, ymax)`` cell EDGES from a tidy grid's cell-CENTER columns.
-
-    ``imshow`` needs this explicitly, or it draws in pixel-index coordinates and the scatter
-    silently collapses into a corner — see the same note in :mod:`plots_projection`.
-    """
-    xs, ys = np.sort(df["x_center"].unique()), np.sort(df["y_center"].unique())
-    dx = (xs[-1] - xs[0]) / (len(xs) - 1) if len(xs) > 1 else 1.0
-    dy = (ys[-1] - ys[0]) / (len(ys) - 1) if len(ys) > 1 else 1.0
-    return (xs[0] - dx / 2, xs[-1] + dx / 2, ys[0] - dy / 2, ys[-1] + dy / 2)
 
 
 class AbxProjectionGridPlot(GridPlot):
@@ -119,7 +99,7 @@ class AbxProjectionGridPlot(GridPlot):
                 "y": g["umap_y"].to_numpy() if len(g) else np.array([]),
             })
 
-        self.build_grid(items, cols=cols, name=f"11_umap_abx_endpoints_max{top_n}",
+        self.build_grid(items, cols=cols, name=f"12_umap_abx_endpoints_max{top_n}",
                         panel_fn=self._panel, edge_xlabel="UMAP 1", edge_ylabel="UMAP 2")
         if self.is_available:
             # Into a trailing EMPTY cell, not over the first panel: every panel's lower-left
@@ -154,15 +134,15 @@ class AbxProjectionGridPlot(GridPlot):
 # --------------------------------------------------------------------------- #
 def save_abx_projection_figure(output_dir, background_path, highlights, stats,
                                top_n=PROJECTION_TOP_N):
-    """Build the step-11 UMAP grid from the summary CSVs and record its footprint.
+    """Build the step-12 UMAP grid from the summary CSVs and record its footprint.
 
-    ``background_path`` points at step 09's ``09_umap_background.csv`` — the same full-library
+    ``background_path`` points at step 11's ``11_umap_background.csv`` — the same full-library
     density grid, reused rather than recomputed so the two steps' panels are directly comparable.
     """
     if not os.path.exists(background_path):
         raise FileNotFoundError(
-            f"Missing {background_path}. Run `python 09_reference_library_projection.py` first — "
-            "step 11 reuses its UMAP background grid rather than recomputing it.")
+            f"Missing {background_path}. Run `python 11_reference_library_projection.py` first — "
+            "step 12 reuses its UMAP background grid rather than recomputing it.")
     background = pd.read_csv(background_path)
 
     plot = AbxProjectionGridPlot(background, highlights, stats, top_n=top_n)
