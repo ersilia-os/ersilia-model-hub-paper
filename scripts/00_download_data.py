@@ -283,6 +283,14 @@ SECTION1_SOURCES = [
         "eosvc_path": "data/raw/chembl_model_reports/10_reports",
         "include": lambda f: f.endswith(".csv"),  # top-level CSVs only; skips plots/
     },
+    {
+        "description": "ChEMBL antimicrobial models — scaffold-split vs random-split AUROC",
+        "repo": "chembl-antimicrobial-models",
+        "src_dir": "output/09c_scaffold_vs_random",
+        "dst_dir": os.path.join(raw_dir, "chembl_model_reports", "09c_scaffold_vs_random"),
+        "eosvc_path": "data/raw/chembl_model_reports/09c_scaffold_vs_random",
+        "include": lambda f: f == "09c_delta_auroc.csv",  # skip the PNG, only need the CSV
+    },
     # CoAdd binarised task data, staged into per-type subfolders because
     # 03_binarised_inhibition and 05_binarised_mic share 12 per-strain filenames
     # and would collide if flattened into one directory.
