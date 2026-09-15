@@ -129,13 +129,19 @@ fig.legend(
 
 # Panel labels: same mechanism as ersilia-ml-benchmark's merge_plot_results.py
 # (placeholders added before OUR OWN tight_layout() call, positions finalized
-# after — stylia.save_figure() below is skipped in favor of a direct
-# fig.savefig() because it runs its own bare tight_layout() internally, which
-# would reflow the figure a second time and invalidate the positions set
-# here). Unlike that script, this figure has a suptitle above the legend, so
-# "a" is placed relative to panel 0's own top edge (like "b" is for panel 1)
-# rather than reusing that script's fixed y=1.07 tuned for a legend-only header.
-label_kwargs = dict(fontsize=stylia.FONTSIZE_BIG, fontweight="bold", ha="left")
+# after). stylia.save_figure() cannot be used for the final save: it always
+# runs its own bare plt.tight_layout() internally (confirmed by reading
+# stylia/figure/__init__.py — its `pad` argument isn't even wired to
+# tight_layout), and empirically that second pass DOES reflow the figure
+# enough to invalidate label positions computed beforehand (tried it: "b"
+# ended up overlapping panel a). So this one figure saves via a direct
+# fig.savefig() with stylia.save_figure()'s own dpi/bbox_inches settings,
+# instead — everything else in this script (format/style, create_figure,
+# colors, label()) still goes through stylia as usual.
+# Unlike that companion script, this figure has a suptitle above the legend,
+# so "a" is placed relative to panel 0's own top edge (like "b" is for panel
+# 1) rather than reusing that script's fixed y=1.07 tuned for a legend-only header.
+label_kwargs = dict(fontsize=stylia.FONTSIZE_BIG, fontweight="bold", ha="left", color=colors.black)
 label_a = fig.text(0.0, 1.0, "a", va="bottom", **label_kwargs)
 label_b = fig.text(0.0, 0.5, "b", va="bottom", **label_kwargs)
 fig.tight_layout(h_pad=5.6)
