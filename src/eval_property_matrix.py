@@ -1,16 +1,19 @@
-"""Shared builder for the per-family property matrices (steps 10 and 12).
+"""Shared builder for the per-family property matrices (step 08).
 
 One function assembles a ``key x endpoint`` block over the full reference library from a curated
-selection config, so each property family gets its own step without duplicating the collection
-logic:
+selection config, so each property family gets its own matrix without duplicating the collection
+logic. Step 08 calls this once per family:
 
-  - step 10 ``config/physchem_models.csv``      -> ``physchem__{model_id}__{column}``  (22 columns)
-  - step 12 ``config/cytotoxicity_models.csv``  -> ``cytotox__{model_id}__{column}``   (24 columns)
+  - ``config/physchem_models.csv``       -> ``physchem__{model_id}__{column}``  (22 columns)
+  - ``config/cytotoxicity_models.csv``   -> ``cytotox__{model_id}__{column}``   (24 columns)
 
 The ``{prefix}__{model_id}__{column_name}`` naming is the same three-part shape used by the pathogen
 matrix (:func:`eval_correlations.build_named_score_matrix`, where the prefix is the pathogen code)
 and by the abx block (:mod:`eval_abx_matrix`, where it is a constant group code). Carrying the model
 ID keeps provenance readable where two models cover overlapping biology.
+
+:func:`property_endpoint_stats` / :func:`report_missing` are re-used downstream, on step 08's cached
+matrices rather than a rebuild: by step 12 (abx), step 13 (cytotox) and step 14 (physchem).
 
 **Un-normalized only**, matching the abx block: no scaling and no row normalization. Choosing a
 transform is a decision for after the family blocks are joined, and the stats these functions write

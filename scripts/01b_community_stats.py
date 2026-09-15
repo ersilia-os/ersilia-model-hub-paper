@@ -61,14 +61,15 @@ print(f"GitHub snapshot: {snapshot_date}  (three of four tracks move daily)")
 # Models track — read, not derived
 # ---------------------------------------------------------------------------
 # The only series this script does not aggregate itself. Step 01 writes it because it is the only
-# consumer of Airtable's date columns; reading the summary rather than re-deriving it from
-# data/raw/airtable_metadata.csv is the repo's summary-CSV rule, and it keeps the two scripts from
-# holding two copies of the same date logic.
+# consumer of Airtable's date columns; reading the summary rather than re-deriving it from the
+# frozen snapshot (AIRTABLE_METADATA_FILE in src/default.py) is the repo's summary-CSV rule, and it
+# keeps the two scripts from holding two copies of the same date logic.
 #
 # NOTE its denominator differs from every panel in step 01: the series runs on the UNFILTERED
-# metadata (215 models, whatever their Status), because a model in maintenance was still
-# incorporated on its date. Step 01's panels are the 208 Ready models. A caption using this track
-# must say 215.
+# metadata (all 224 models on the frozen 2026-08-07 snapshot, whatever their Status), because a model
+# in maintenance was still incorporated on its date. Step 01's panels are the 220 Ready models. The
+# plotted series reaches 213 rather than 224 because it is trimmed to the last complete month and
+# four models carry no Incorporation Date. A caption using this track must quote the plotted number.
 models_path = os.path.join(metadata_dir, "models_over_time_by_task.csv")
 if not os.path.exists(models_path):
     raise SystemExit(f"Missing {os.path.relpath(models_path, os.path.join(root, '..'))}\n"
@@ -253,8 +254,9 @@ with open(os.path.join(outpath, "01b_snapshot.txt"), "w") as f:
             f"  Commits:                          {int(commits_plot.sum())}\n"
             f"  Issues:                           {int(issues_plot.sum())}\n"
             f"\n"
-            f"The Models track runs on the UNFILTERED metadata, so it reaches "
-            f"{int(models_total.iloc[-1])} where every panel in step 01 is the 208 Ready models.\n"
+            f"The Models track runs on the UNFILTERED metadata and is trimmed to the last complete "
+            f"month, so it reaches {int(models_total.iloc[-1])} where step 01's panels count only "
+            f"Ready models on the frozen snapshot. The two numbers are not meant to agree.\n"
             f"The three GitHub tracks move daily; a caption is only reproducible against the "
             f"snapshot date above.\n"
             f'The People track counts COMMIT AUTHORS only. "Contributors" in the wider sense '

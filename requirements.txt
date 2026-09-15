@@ -9,3 +9,9 @@ requests==2.32.5
 circlify==0.15.1
 scikit-learn==1.8.0
 scipy==1.17.1
+# Explicit exception to the "stylia only" plotting rule (CLAUDE.md), scoped to step 15's chord
+# diagrams only — matplotlib has no chord-diagram primitive, and pycirclize draws proper circos
+# ribbons (wide at the rim, pinched at the centre) via real sector-based arc allocation, which a
+# hand-rolled Bezier stroke cannot. Pulls in biopython transitively (pycirclize's own genomic-track
+# features, unused here) — unavoidable, not a direct choice.
+pycirclize==1.10.1

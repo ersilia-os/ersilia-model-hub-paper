@@ -1,4 +1,10 @@
-"""Step 12 analysis engine — the antibiotic-resemblance score matrix and its UMAP highlights.
+"""Steps 08/12 analysis engine — the antibiotic-resemblance score matrix and its UMAP highlights.
+
+``build_abx_named_matrix`` (matrix-building) is called from step 08; ``endpoint_highlights``/
+``load_umap`` (UMAP highlight selection) are called from step 12, which reads the matrix step 08
+already cached rather than calling ``build_abx_named_matrix`` itself. Per-endpoint summary stats are
+computed by :func:`eval_property_matrix.property_endpoint_stats`, shared with the physchem/cytotox
+blocks rather than duplicated here.
 
 Same layout and machinery as the pathogen matrices in :mod:`eval_correlations`: every model was run
 on the SAME ~1.35M-compound reference library, staged by ``00_download_data.py`` as
@@ -18,7 +24,7 @@ lives in its own module rather than extending that one:
      concatenated later.
   2. **The endpoints are almost all discrete.** 54 of the 55 selected columns are binary flags or
      small integer counts; only ``abx_score`` is continuous. That makes a plain top-N rank cutoff
-     — which is what step 10 uses on continuous ``consensus_score`` — meaningless here, and drives
+     — which is what step 11 uses on continuous ``consensus_score`` — meaningless here, and drives
      the highlight rule in :func:`endpoint_highlights`.
 
 Nothing is dropped, filtered or thresholded: every selected column reaches the matrix and the stats
@@ -27,7 +33,6 @@ table, including the four that are constant zero over the whole library.
 
 import os
 
-import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
@@ -77,38 +82,11 @@ def build_abx_named_matrix(pred_dir, selection_path, full_matrix_cache_path=None
     return full[old_cols].rename(columns=rename_map), sel
 
 
-def endpoint_stats(matrix, sel, group=GROUP_CODE):
-    """Per-endpoint summary over the FULL library — one row per selected column.
-
-    Reports ``n_unique``, ``min``, ``max``, ``mean``, ``n_nonzero``, ``pct_nonzero`` and ``n_nan``.
-    No column is excluded: the constant-zero ones appear with ``n_nonzero == 0`` rather than being
-    filtered out, which is what makes them auditable.
-    """
-    rows = []
-    for r in sel.itertuples():
-        name = named_column(r.model_id, r.column_name, group)
-        v = matrix[name]
-        finite = v[np.isfinite(v)]
-        rows.append({
-            "endpoint": name, "model_id": r.model_id, "column_name": r.column_name,
-            "direction": r.direction,
-            "n_unique": int(v.nunique()),
-            "min": float(finite.min()) if len(finite) else np.nan,
-            "max": float(finite.max()) if len(finite) else np.nan,
-            "mean": float(finite.mean()) if len(finite) else np.nan,
-            "n_nonzero": int((v > 0).sum()),
-            "n_nan": int(v.isna().sum()),
-        })
-    out = pd.DataFrame(rows)
-    out["pct_nonzero"] = 100.0 * out["n_nonzero"] / len(matrix)
-    return out
-
-
 def endpoint_highlights(matrix, stats, proj, top_n=PROJECTION_TOP_N, group=GROUP_CODE):
     """Compounds to highlight per endpoint, with UMAP coordinates attached.
 
     **The rule (user-directed): every compound with a value > 0, capped at ``top_n``, highest value
-    first.** It is deliberately NOT step 10's "top ``top_n`` by score":
+    first.** It is deliberately NOT step 11's "top ``top_n`` by score":
 
       - Only ``abx_score`` is continuous. For the other 54 columns a plain top-N would pad the set
         with arbitrarily chosen ZERO-valued compounds — e.g. ``glycopeptides`` has 1 non-zero

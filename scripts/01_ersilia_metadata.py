@@ -1,7 +1,8 @@
 """Analyse Ersilia Model Hub metadata and plot summary statistics.
 
-Requires data/raw/airtable_metadata.csv (run 00_download_data.py first),
-config/pathogens_of_interest.csv and config/model_training_sizes.csv.
+Requires the frozen Airtable snapshot named by AIRTABLE_METADATA_FILE in src/default.py
+(run 00_download_data.py first), config/pathogens_of_interest.csv and
+config/model_training_sizes.csv.
 
 Counts are written per field; each metadata panel (Tasks & subtasks, Biomedical Area,
 Target Organism, the three donuts, the technical box row, pathogen circle-treemap) is saved as its
@@ -39,7 +40,8 @@ from plotting_colors import (LICENSE_CLASS, LICENSE_MISSING, SUBTASK_ORDER,  # n
 from plotting_utils import abbrev  # noqa: E402
 from default import (SUBTASK_PARENT, SUBTASK_DISPLAY, BIOAREA_DISPLAY,  # noqa: E402
                      BIOAREA_GROUP, BIOAREA_GROUP_OTHER, ACTIVITY_SUBTASK,
-                     RUNTIME_BATCH, RUNTIME_COLUMN)
+                     RUNTIME_BATCH, RUNTIME_COLUMN,
+                     AIRTABLE_METADATA_FILE, AIRTABLE_SNAPSHOT_DATE)
 
 outpath = os.path.join(root, "..", "output", "01_models_metadata")
 os.makedirs(outpath, exist_ok=True)
@@ -47,8 +49,13 @@ os.makedirs(outpath, exist_ok=True)
 pathogens_path = os.path.join(root, "..", "config", "pathogens_of_interest.csv")
 training_sizes_path = os.path.join(root, "..", "config", "model_training_sizes.csv")
 
-df_all = pd.read_csv(os.path.join(root, "..", "data", "raw", "airtable_metadata.csv"),
-                     encoding="utf-8-sig")
+# `keep_default_na=False` matches 00_download_data.py's read of the same file: `None` is a
+# legitimate License value ("repo checked, confirmed no LICENSE file"), and pandas' default NA set
+# would otherwise coerce it to NaN, indistinguishable from a genuinely blank cell.
+df_all = pd.read_csv(os.path.join(root, "..", "data", "raw", AIRTABLE_METADATA_FILE),
+                     encoding="utf-8-sig", keep_default_na=False)
+print(f"Metadata: {AIRTABLE_METADATA_FILE} "
+      f"(last Airtable pull {AIRTABLE_SNAPSHOT_DATE})")
 print(len(df_all))
 # The cumulative series below needs the unfiltered frame (every model that carries a date, whatever
 # its Status), so df_all is kept alongside the Ready-only frame the snapshot panels use.
@@ -96,13 +103,27 @@ counts["Subtask"] = sub
 #      become one GPL-3.0 bar (71). This drops a real legal distinction, which is why the ungrouped
 #      license_counts.csv written above is kept as the record.
 #   2. Label models with no license as LICENSE_MISSING rather than dropping them — unknown terms are
-#      their own (worse) category for anyone reusing a model, not an absence of data to ignore.
+#      their own (worse) category for anyone reusing a model, not an absence of data to ignore. The
+#      literal Airtable value "None" (repo checked, confirmed no LICENSE file) is folded into the
+#      same LICENSE_MISSING bucket as a genuinely blank cell — per project convention, Ersilia never
+#      leaves the license check undone, so "None" and "not recorded" describe the same reuser-facing
+#      outcome and are kept as one field rather than two.
 # Ties are broken alphabetically so the four single-model licenses come out in a stable order.
-lic = (df["License"].fillna(LICENSE_MISSING)
+lic = (df["License"].replace({"": LICENSE_MISSING, "None": LICENSE_MISSING})
        .str.replace(r"-(or-later|only)$", "", regex=True))
 lic_counts = lic.value_counts().reset_index()
 lic_counts.columns = ["value", "count"]
 lic_counts["class"] = lic_counts["value"].map(LICENSE_CLASS)
+# Same guard as BIOAREA_GROUP below, and for the same reason. LicenseClassDonutPlot groups by the
+# class and drops NaN, so a licence with no LICENSE_CLASS entry would silently remove its models
+# from the donut — a figure quietly stating a smaller n than the rest of the panel set. Added
+# 2026-08-14, when the manual metadata revision introduced three unmapped values at once
+# (Non-commercial, CC-BY-NC-SA-4.0, NCSA) covering 4 models.
+_unmapped_lic = sorted(lic_counts.loc[lic_counts["class"].isna(), "value"])
+if _unmapped_lic:
+    raise KeyError(f"License values with no LICENSE_CLASS entry: {_unmapped_lic}. "
+                   "Add them to src/plotting_colors.py — an unmapped licence must not vanish "
+                   "from the donut.")
 lic_counts = (lic_counts.sort_values(["count", "value"], ascending=[False, True])
               .reset_index(drop=True))
 counts["License grouped"] = lic_counts
@@ -128,7 +149,7 @@ pd.DataFrame(tech_rows).to_csv(
     os.path.join(outpath, "technical_metrics_summary.csv"), index=False)
 
 # Output Dimension is drawn as decade-binned circles rather than a box-and-swarm (the column is
-# heavily tied — 68 of 131 Annotation models output a single value, and 100 of them fall in the 1-9
+# heavily tied — 68 of 133 Annotation models output a single value, and 102 of them fall in the 1-9
 # bin), and a circle's area is the only thing carrying its count. This is the record of the exact
 # numbers behind those nine circles.
 od = df[df["Output Dimension"] > 0].copy()
@@ -137,10 +158,11 @@ od_bins = pd.crosstab(od["Task"], od["decade"])
 od_bins.columns = [f"{10 ** c}-{10 ** (c + 1) - 1}" for c in od_bins.columns]
 od_bins.to_csv(os.path.join(outpath, "output_dimension_bins.csv"))
 
-# Biomedical Area collapsed into four groups (BIOAREA_GROUP, signed off 2026-08-02), over ACTIVITY
+# Biomedical Area collapsed into five groups (BIOAREA_GROUP, signed off 2026-08-02, Antifungal split
+# out 2026-08-07, Leishmaniasis added 2026-08-14), over ACTIVITY
 # PREDICTION models only. Two things this counting has to get right:
 #   1. Biomedical Area is MULTI-VALUE, so counts are of DISTINCT MODELS per group, not of area
-#      assignments. Grouping absorbs most of the multiplicity — 10 of the 12 multi-area Annotation
+#      assignments. Grouping absorbs most of the multiplicity — 16 of the 22 multi-area Annotation
 #      models have all their areas inside one group (AMR+Pneumonia, AMR+Diarrhoea, Gonorrhea+AMR).
 #   2. Models that still span two groups are counted in BOTH, so the bars sum to more than n. That is
 #      the metadata's own claim and is not silently resolved; the count is printed below.
@@ -161,8 +183,8 @@ _order = [g for g in _g.index if g != BIOAREA_GROUP_OTHER] + \
          ([BIOAREA_GROUP_OTHER] if BIOAREA_GROUP_OTHER in _g.index else [])
 counts["Biomedical Area grouped"] = pd.DataFrame(
     {"value": _order, "count": [int(_g[g]) for g in _order]})
-# Distinct models behind the four groups, which is NOT their sum: two models carry areas in two
-# different groups, so the counts add to 94 over 92 models. The donut shows this in its hole, and
+# Distinct models behind the five groups, which is NOT their sum: five models carry areas in two
+# different groups, so the counts add to 98 over 93 models. The donut shows this in its hole, and
 # would otherwise state a model count that does not exist.
 counts["Biomedical Area grouped"].attrs["n_models"] = int(ba["Identifier"].nunique())
 (ba.groupby(["group", "Biomedical Area"])["Identifier"].nunique()

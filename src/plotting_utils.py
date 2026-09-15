@@ -11,7 +11,6 @@ panel and for one axis of a multi-panel figure.
 """
 
 import matplotlib.colors as mcolors
-import matplotlib.patheffects as patheffects
 import numpy as np
 import stylia as st
 from matplotlib.lines import Line2D
@@ -481,15 +480,32 @@ def sequential_cmap(name="cobalt"):
     return mcolors.LinearSegmentedColormap.from_list("sequential", ["white", hue(name)])
 
 
+def spectrum_cmap(hues):
+    """A white → multiple house hues sequential colormap — more colours than
+    :func:`sequential_cmap`'s single hue, for a scale with many bins where one hue's white-to-base
+    range isn't enough to tell them apart (user-directed, 2026-08-31: the step-10 overlap matrices).
+
+    ``hues`` must already be ordered by DECREASING perceptual luminance (lightest first) — the ramp
+    still has to darken monotonically from white to the last stop, or a reader can no longer tell
+    "higher magnitude" from "different colour" the way a proper multi-hue sequential palette (e.g.
+    ``YlGnBu``) does. This is NOT the same thing as a qualitative/rainbow map: stylia's
+    ``SpectralColormap`` cycles hues with no such ordering, which is exactly why it was rejected for
+    step 10's (diverging) AUROC scale — see that figure's colour history.
+    """
+    return mcolors.LinearSegmentedColormap.from_list("spectrum", ["white"] + [hue(h) for h in hues])
+
+
 def heatmap(ax, matrix, *, cmap, norm, annotate=True, value_fmt="{:.2f}",
             text_light_when=None, nan_color=None, highlight=None, highlight_color=None,
             x_rotation=45, row_labels=None, col_labels=None, colorbar=False,
-            annot_fontsize=None):
+            annot_fontsize=None, aspect="auto"):
     """Annotated heatmap of a DataFrame: shared by the AUROC and correlation matrices.
 
     ``cmap``/``norm`` set the colour mapping; NaN cells render in ``nan_color`` (neutral).
     ``text_light_when(v) -> bool`` picks white vs INK text per cell; ``highlight`` outlines the
-    listed ``(row, col)`` cells (e.g. a matrix diagonal).
+    listed ``(row, col)`` cells (e.g. a matrix diagonal). ``aspect="auto"`` (the default, unchanged
+    for every existing caller) stretches cells to fill the axes; pass ``"equal"`` for literally
+    square cells regardless of the axes' own proportions (step 10's matrices, 2026-09-02).
     """
     nan_color = REFERENCE_LINE if nan_color is None else nan_color
     highlight_color = INK if highlight_color is None else highlight_color
@@ -497,7 +513,7 @@ def heatmap(ax, matrix, *, cmap, norm, annotate=True, value_fmt="{:.2f}",
     nrows, ncols = data.shape
     cmap = cmap.copy()
     cmap.set_bad(nan_color)
-    im = ax.imshow(np.ma.masked_invalid(data), cmap=cmap, norm=norm, aspect="auto")
+    im = ax.imshow(np.ma.masked_invalid(data), cmap=cmap, norm=norm, aspect=aspect)
     if colorbar:
         ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     if highlight:
@@ -648,8 +664,8 @@ def specificity_bars(ax, df, *, title="", order=None):
 def merge_figure_cells(output_dir, footprints):
     """Merge ``footprints`` into ``output_dir/figure_cells.json`` instead of replacing it.
 
-    A step that writes more than one figure family into the same output dir — e.g. step 11's abx
-    UMAP grid alongside its per-pathogen overlap grids, or step 12's toxicity projection — would
+    A step that writes more than one figure family into the same output dir — e.g. step 12's abx
+    UMAP grid alongside its per-pathogen overlap grids, or step 13's toxicity projection — would
     otherwise have whichever writer ran last truncate the manifest to its own entries. Every
     ``save_*_figures`` entry point routes through here so the manifest accumulates.
     """
@@ -665,3 +681,28 @@ def merge_figure_cells(output_dir, footprints):
     with open(path, "w") as f:
         json.dump(existing, f, indent=2)
     return existing
+
+
+def save_diagnostic_figure(fig, name, output_dir, *, dpi=300):
+    """Save ``fig`` as ``output_dir/png/<name>.png`` + ``pdf/<name>.pdf``, then close it.
+
+    For a plain-matplotlib diagnostic figure (dynamically sized, not built as a
+    :class:`plotting_base.BasePlot`) that still needs the project's PNG + vector-PDF pair — the same
+    convention :meth:`plotting_base.BasePlot.save` gives a cell-grid figure, without requiring one of
+    these to fit that grid. Not entered into ``figure_cells.json``: a diagnostic has no footprint on
+    the page layout.
+    """
+    import os
+
+    import matplotlib.pyplot as plt
+
+    png_dir = os.path.join(output_dir, "png")
+    pdf_dir = os.path.join(output_dir, "pdf")
+    os.makedirs(png_dir, exist_ok=True)
+    os.makedirs(pdf_dir, exist_ok=True)
+    png_path = os.path.join(png_dir, name + ".png")
+    pdf_path = os.path.join(pdf_dir, name + ".pdf")
+    fig.savefig(png_path, dpi=dpi)
+    fig.savefig(pdf_path)
+    plt.close(fig)
+    return png_path, pdf_path

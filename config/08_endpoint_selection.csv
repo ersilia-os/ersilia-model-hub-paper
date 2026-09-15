@@ -70,6 +70,13 @@ eos3dys,coadd-antimicrobial-activity,paeruginosa_PAO397_inhib_50,higher,Pseudomo
 eos3dys,coadd-antimicrobial-activity,paeruginosa_PAO397_mic_25,higher,Pseudomonas aeruginosa,Gram-negative bacteria,sensitized,bioactivity,Yes
 eos3dys,coadd-antimicrobial-activity,saureus_ATCC43300_inhib_50,higher,Staphylococcus aureus,Gram-positive bacteria,resistant,bioactivity,Yes
 eos3dys,coadd-antimicrobial-activity,saureus_ATCC43300_mic_25,higher,Staphylococcus aureus,Gram-positive bacteria,resistant,bioactivity,Yes
+eos3f8h,eu-openscreen-hts,abaumannii,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3f8h,eu-openscreen-hts,calbicans,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos3f8h,eu-openscreen-hts,ecoli,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3f8h,eu-openscreen-hts,efaecalis,higher,Enterococcus faecalis,Gram-positive bacteria,wild-type,bioactivity,Yes
+eos3f8h,eu-openscreen-hts,kpneumoniae,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3f8h,eu-openscreen-hts,paeruginosa,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3f8h,eu-openscreen-hts,saureus,higher,Staphylococcus aureus,Gram-positive bacteria,wild-type,bioactivity,Yes
 eos3lyd,efflux-pump-avoidance-gram-negative,efflux_evader_proba,higher,Escherichia coli,Gram-negative bacteria,wild-type,permeability,No
 eos3ujl,mtb-permeability,permeability_probability,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,permeability,No
 eos43d6,antimicrobial-activity-mtuberculosis,chembl_dose_response_00,higher,Mycobacterium tuberculosis,Mycobacteria (acid-fast),wild-type,bioactivity,Yes
