@@ -188,6 +188,103 @@ class EndpointSpecificityPlot(BasePlot):
         _class_legend(self.ax, block, loc="upper left")
 
 
+class EndpointSpecificityOverlapPlot(BasePlot):
+    """Same-pathogen against different-pathogen median raw top-1000 shared-actives COUNT (not
+    Jaccard), one point per endpoint — the same comparison as :class:`EndpointSpecificityPlot`, with
+    the axis metric swapped from AUROC self-performance to
+    :func:`eval_endpoint_quality.overlap_endpoint_stats`'s raw overlap count, to compare which
+    reads better (2026-09-03, user-directed).
+
+    No chance-level reference line: the expected overlap of two UNRELATED top-1000 sets over the
+    ~1.35M-compound library is a small, near-zero constant, unlike AUROC's clean 0.5, so only the
+    identity diagonal is drawn.
+    """
+
+    #: Square footprint, same reasoning as EndpointSpecificityPlot: both axes are the same count on
+    #: the same 0-1000 scale, so an unequal aspect would tilt the identity diagonal.
+    def __init__(self, table, ax=None, cells=(3, 3)):
+        super().__init__(ax=ax, cells=cells)
+        self.name = "09_endpoint_specificity_overlap"
+
+        block = table.dropna(subset=["overlap_same_median", "overlap_diff_median"])
+        if not len(block):
+            self._unavailable()
+            return
+
+        lo = float(min(block["overlap_same_median"].min(),
+                       block["overlap_diff_median"].min())) - 20
+        hi = float(max(block["overlap_same_median"].max(),
+                       block["overlap_diff_median"].max())) + 20
+        self.ax.plot([lo, hi], [lo, hi], linestyle="--", linewidth=0.8, color=REFERENCE_LINE,
+                     zorder=1)
+
+        for consensus, marker, size in ((False, ENDPOINT_MARKER, POINT_SIZE),
+                                        (True, CONSENSUS_MARKER, CONSENSUS_POINT_SIZE)):
+            g = block[block["is_consensus"] == consensus]
+            if not len(g):
+                continue
+            self.ax.scatter(g["overlap_same_median"], g["overlap_diff_median"],
+                            s=size, marker=marker, alpha=POINT_ALPHA, zorder=3,
+                            color=[_class_color(c) for c in g["organism_class"]],
+                            edgecolors=INK if consensus else "none",
+                            linewidths=0.5 if consensus else 0)
+
+        self.ax.set_xlim(lo, hi)
+        self.ax.set_ylim(lo, hi)
+        self.ax.set_aspect("equal", adjustable="box")
+        self.label(xlabel="median top-1000 shared actives, own pathogen",
+                   ylabel="median top-1000 shared actives, other pathogens")
+        _class_legend(self.ax, block, loc="upper left")
+
+
+class EndpointSpecificityBedrocPlot(BasePlot):
+    """Same-pathogen against different-pathogen median BEDROC (alpha=20), one point per endpoint —
+    the same comparison as :class:`EndpointSpecificityPlot`, with the axis metric swapped from plain
+    AUROC to :func:`eval_endpoint_quality.bedroc_endpoint_stats`'s early-recognition-weighted
+    BEDROC self-performance, to compare which reads better (2026-09-03, user-directed).
+
+    Alpha=20 reuses :data:`metrics.BEDROC_ALPHA`, the same early-recognition emphasis (~top 8%)
+    already documented and used for step 05's EU OpenScreen validation, rather than a second choice
+    of alpha for this panel. No chance-level reference line: BEDROC's random-ranking expectation
+    depends on alpha and prevalence and is not derived here, so only the identity diagonal is drawn.
+    """
+
+    #: Square footprint, same reasoning as EndpointSpecificityPlot.
+    def __init__(self, table, ax=None, cells=(3, 3)):
+        super().__init__(ax=ax, cells=cells)
+        self.name = "09_endpoint_specificity_bedroc"
+
+        block = table.dropna(subset=["bedroc_out_same_median", "bedroc_out_diff_median"])
+        if not len(block):
+            self._unavailable()
+            return
+
+        lo = float(min(block["bedroc_out_same_median"].min(),
+                       block["bedroc_out_diff_median"].min())) - 0.03
+        hi = float(max(block["bedroc_out_same_median"].max(),
+                       block["bedroc_out_diff_median"].max())) + 0.03
+        self.ax.plot([lo, hi], [lo, hi], linestyle="--", linewidth=0.8, color=REFERENCE_LINE,
+                     zorder=1)
+
+        for consensus, marker, size in ((False, ENDPOINT_MARKER, POINT_SIZE),
+                                        (True, CONSENSUS_MARKER, CONSENSUS_POINT_SIZE)):
+            g = block[block["is_consensus"] == consensus]
+            if not len(g):
+                continue
+            self.ax.scatter(g["bedroc_out_same_median"], g["bedroc_out_diff_median"],
+                            s=size, marker=marker, alpha=POINT_ALPHA, zorder=3,
+                            color=[_class_color(c) for c in g["organism_class"]],
+                            edgecolors=INK if consensus else "none",
+                            linewidths=0.5 if consensus else 0)
+
+        self.ax.set_xlim(lo, hi)
+        self.ax.set_ylim(lo, hi)
+        self.ax.set_aspect("equal", adjustable="box")
+        self.label(xlabel="median BEDROC (α=20), own pathogen",
+                   ylabel="median BEDROC (α=20), other pathogens")
+        _class_legend(self.ax, block, loc="upper left")
+
+
 #: Endpoints named in the ranked-tail diagnostic. A DISPLAY limit only — every endpoint is in
 #: ``09_endpoint_quality.csv``, nothing is filtered out of any statistic, and the figure's own axis
 #: label states how many of how many are shown. The full 249 would need a ~100-inch page at a
@@ -254,6 +351,53 @@ def endpoint_ranked_tail_figure(table, *, name, output_dir, n=TAIL_N, chance=PRE
 #: "this model predicts everything".
 PAIR_COLORS = {True: hue("crimson"), False: hue("cobalt")}
 PAIR_LABELS = {True: "same pathogen", False: "cross pathogen"}
+
+#: Bins for the pooled AUROC pair distribution. AUROC is bounded [0, 1] and every pair is already a
+#: median-free raw value (not aggregated per endpoint first), so 50 bins gives ~0.02 resolution.
+AUROC_PAIR_N_BINS = 50
+
+
+class AurocPairDistributionPlot(BasePlot):
+    """Two overlaid distributions of directed pairwise AUROC(top-1000) values — every same-pathogen
+    pair pooled into one distribution, every cross-pathogen pair into the other — rather than the
+    per-endpoint median-vs-median scatter :class:`EndpointSpecificityPlot` draws (2026-09-03,
+    user-requested alternative schema).
+
+    Reads :func:`eval_endpoint_quality.auroc_endpoint_pairs`' directed frame directly: each row is
+    one (endpoint, peer) pair's raw AUROC (the endpoint's own score ranking the peer's top-1000
+    binarized actives), labelled ``same_pathogen`` / ``different_pathogen``. No per-endpoint
+    aggregation — an endpoint with many peers contributes many points to its distribution, same as
+    every other endpoint's own peer count, so pathogens with more endpoints (denser same-pathogen
+    pair counts) naturally weigh more into the pooled same-pathogen distribution. That is a property
+    of "all-vs-all pooling", not filtered or reweighted here.
+
+    Densities (not raw counts) are drawn on the y-axis, since the two groups have very different
+    pair counts (same-pathogen pairs are the minority by construction — most possible pairs are
+    cross-pathogen) and raw-count histograms would make the smaller group invisible.
+    """
+
+    def __init__(self, pairs, ax=None, cells=(3, 4), bins=AUROC_PAIR_N_BINS):
+        super().__init__(ax=ax, cells=cells)
+        self.name = "09_auroc_top1000_pair_distribution"
+
+        same = pairs.loc[pairs["category"] == "same_pathogen", "auroc"].dropna().to_numpy()
+        diff = pairs.loc[pairs["category"] == "different_pathogen", "auroc"].dropna().to_numpy()
+        if not len(same) and not len(diff):
+            self._unavailable()
+            return
+
+        edges = np.linspace(0.0, 1.0, bins + 1)
+        for vals, same_key in ((same, True), (diff, False)):
+            if not len(vals):
+                continue
+            self.ax.hist(vals, bins=edges, density=True, color=PAIR_COLORS[same_key],
+                        alpha=0.55, edgecolor="none",
+                        label=f"{PAIR_LABELS[same_key]}  (n={len(vals):,}, median={np.median(vals):.3f})")
+
+        self.ref_line(PREDICTOR_CHANCE_LEVEL, axis="x")
+        self.ax.set_xlim(0, 1)
+        self.label(xlabel="AUROC (top-1000), directed endpoint pairs", ylabel="density")
+        self.ax.legend(loc="upper left", fontsize=st.FONTSIZE_SMALL, frameon=False)
 
 #: Points drawn per pathogen box before subsampling, before the 2026-09-02 restriction to the 15
 #: pathogens of interest this reached ~16,500 for P. falciparum's box alone (64 endpoints x 306
@@ -430,20 +574,42 @@ def save_pathogen_subset_figure(output_dir, subset=None):
     return merge_figure_cells(output_dir, new)
 
 
+def save_auroc_pair_distribution_figure(output_dir, pairs):
+    """The pooled same-vs-cross-pathogen AUROC(top-1000) distribution figure
+    (:class:`AurocPairDistributionPlot`), merged into ``figure_cells.json``. ``pairs`` is the
+    directed frame over Part 1's 15-pathogens-of-interest scope (no ``MIN_ENDPOINTS`` filter) —
+    distinct from :func:`save_endpoint_quality_figures`'s 12-pathogen, >5-endpoint scope.
+    """
+    plot = AurocPairDistributionPlot(pairs)
+    new = {}
+    if plot.is_available:
+        plot.save(output_dir)
+        new[plot.name] = list(plot.cells)
+        print(f"  figure: {plot.name}")
+    else:
+        print(f"  [skip figure] {plot.name}: no rows")
+    return merge_figure_cells(output_dir, new)
+
+
 def save_endpoint_quality_figures(output_dir, table=None):
-    """Build all three per-endpoint-quality panels and record the grid footprints in
+    """Build all per-endpoint-quality panels and record the grid footprints in
     ``figure_cells.json``.
 
-    Only the two :class:`plotting_base.BasePlot` panels have a cell footprint; the ranked-tail
+    Only the :class:`plotting_base.BasePlot` panels have a cell footprint; the ranked-tail
     diagnostic is sized in inches by its row count, exactly as step 09's per-pathogen figure is, so
     it has no entry in the manifest. The two performance panels (:func:`save_activity_self_figure`,
     :func:`save_pathogen_subset_figure`) are built separately, since they read a different table.
+
+    :class:`EndpointSpecificityOverlapPlot` and :class:`EndpointSpecificityBedrocPlot` (2026-09-03)
+    are alternative-metric siblings of :class:`EndpointSpecificityPlot`, drawn alongside it for a
+    direct readability comparison rather than replacing it.
     """
     if table is None:
         table = pd.read_csv(os.path.join(output_dir, "09_endpoint_quality.csv"))
 
     footprints = {}
-    for plot in (EndpointUprankingPlot(table), EndpointSpecificityPlot(table)):
+    for plot in (EndpointUprankingPlot(table), EndpointSpecificityPlot(table),
+                EndpointSpecificityOverlapPlot(table), EndpointSpecificityBedrocPlot(table)):
         if plot.is_available:
             plot.save(output_dir)
             footprints[plot.name] = list(plot.cells)

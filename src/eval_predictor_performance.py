@@ -59,6 +59,7 @@ import pyarrow.parquet as pq
 from default import (ACTIVITY_BINARIZE_TOP_N, COADD_MODEL_ID, CONSENSUS_COLUMN,
                      CURATED_PREDICTORS, PREDICTOR_CHANCE_LEVEL,
                      PREDICTOR_FAMILIES, PREDICTOR_METRICS)
+from metrics import BEDROC_ALPHA
 
 #: Parquet columns read at once when reducing targets to their top-N indices. 20 columns of 1.35M
 #: float64 is ~215 MB in flight; each is reduced to 1000 int32 indices and dropped immediately.
@@ -221,6 +222,32 @@ def auroc_from_ranks(ranks, top_idx, n_total):
     return (r_pos - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg)
 
 
+def bedroc_from_ranks(ranks_from_top, top_idx, n_total, alpha=BEDROC_ALPHA):
+    """BEDROC (Truchon & Bayly, 2007) of a continuous predictor against a top-N binary target, from
+    precomputed STABLE descending ranks.
+
+    ``ranks_from_top`` must be ``scipy.stats.rankdata(-v, method="ordinal")`` — rank 1 = the highest
+    score, ties broken by original array order — the exact same rank each compound gets from
+    :func:`metrics.bedroc`'s ``np.argsort(-y_score, kind="mergesort")``. This is DELIBERATELY NOT the
+    tie-averaged ``ranks`` :func:`auroc_from_ranks` uses: BEDROC is a nonlinear (exponential) function
+    of an individual's rank position, so ``exp(mean(tied ranks)) != mean(exp(tied ranks))`` (Jensen's
+    inequality) — tie-averaging would give a systematically biased approximation rather than an exact
+    match, unlike AUROC's linear Mann-Whitney identity, where tie-averaging is exact. Verified exact
+    (not merely close) against :func:`metrics.bedroc` in step 09's spot-check.
+    """
+    n_pos = len(top_idx)
+    n_neg = n_total - n_pos
+    if n_pos == 0 or n_neg == 0:
+        return np.nan
+    ranks_from_top = ranks_from_top[top_idx].astype(np.float64)
+    ra = n_pos / n_total
+    rie_num = np.sum(np.exp(-alpha * ranks_from_top / n_total))
+    rie_den = ra * (1 - np.exp(-alpha)) / (np.exp(alpha / n_total) - 1)
+    rie = rie_num / rie_den
+    factor = ra * np.sinh(alpha / 2) / (np.cosh(alpha / 2) - np.cosh(alpha / 2 - alpha * ra))
+    return float(rie * factor + 1.0 / (1.0 - np.exp(alpha * (1 - ra))))
+
+
 def balanced_accuracy_from_mask(mask, n_mask_true, top_idx, n_total):
     """Balanced accuracy of a binary predictor against a top-N binary target.
 
@@ -287,11 +314,14 @@ def pathogen_subset_endpoints(targets, pathogens_csv, consensus_col=CONSENSUS_CO
 
 def activity_self_performance(parquet_path, targets, tops, n_total, batch=TARGET_BATCH):
     """The 260 x 260 block: each activity endpoint's RAW score against every endpoint's top-N
-    binarization, as AUROC.
+    binarization, as AUROC (``value``) AND BEDROC(alpha=20) (``value_bedroc``).
 
     Same machinery as the property predictors, with the activity endpoints on both sides — the
     x-axis entity is the un-binarized score, the y-axis target is the binarized one. Every activity
-    endpoint is continuous, so AUROC applies throughout and no metric selection is needed.
+    endpoint is continuous, so AUROC applies throughout and no metric selection is needed. BEDROC
+    needs its OWN ranking per predictor column — ``rankdata(-v, method="ordinal")``, NOT
+    tie-averaged like AUROC's (see :func:`bedroc_from_ranks`'s docstring for why) — so it costs one
+    extra rank/sort per predictor, still far cheaper than a second pass over the parquet.
 
     Three pair kinds are labelled rather than filtered, since each answers a different question:
 
@@ -325,6 +355,9 @@ def activity_self_performance(parquet_path, targets, tops, n_total, batch=TARGET
                 remap[valid] = np.arange(n_used)
                 v = v[valid]
             ranks = rankdata(v, method="average")
+            # A SEPARATE ranking for BEDROC, deliberately not tie-averaged — see
+            # bedroc_from_ranks's docstring for why the two metrics need different tie handling.
+            bedroc_ranks = rankdata(-v, method="ordinal")
             pm = meta.loc[pcol]
 
             for tcol, idx in tops.items():
@@ -339,6 +372,7 @@ def activity_self_performance(parquet_path, targets, tops, n_total, batch=TARGET
                     "target_column": tm["column_name"], "target_organism": tm["organism"],
                     "metric": PREDICTOR_METRICS["continuous"],
                     "value": auroc_from_ranks(ranks, idx, n_used),
+                    "value_bedroc": bedroc_from_ranks(bedroc_ranks, idx, n_used),
                     "self_pair": pcol == tcol,
                     "same_organism": pm["organism"] == tm["organism"],
                     "same_model": pm["model_id"] == tm["model_id"],

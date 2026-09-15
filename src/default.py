@@ -404,6 +404,17 @@ ABX_ENRICHMENT_LOG2OR_CAP = 10
 # (unadjusted) per-cell p-value — a display convenience, not a claim that multiplicity is
 # accounted for. The long-format CSV also carries a Benjamini-Hochberg-adjusted column for that.
 ABX_ENRICHMENT_SIG_THRESHOLDS = (0.05, 0.01, 0.001)
+
+# Bubble-size cap (RAW odds ratio, not log2) for the bubble-grid variant of the enrichment figure
+# (plots_abx_enrichment.AbxEnrichmentBubblePlot): bubble AREA scales linearly from 0 up to this
+# value, then clips — chosen against the real long-format distribution (509 finite cells: median 0,
+# 99th pct ~865, 99.5th pct ~6,149, max ~13,678, one +inf value). Sits just above the 99th
+# percentile (user-directed, 2026-09-03: "let some of the bubbles be bigger", accepting that a
+# handful of standout classes/pathogens then draw large enough to spill into neighbouring cells —
+# see MAX_DIAM_FRAC and the zorder handling in AbxEnrichmentBubblePlot). Independent of
+# ABX_ENRICHMENT_LOG2OR_CAP, which caps the COLOUR encoding in log2-space: this one caps the SIZE
+# encoding in raw-odds-ratio space.
+ABX_ENRICHMENT_OR_SIZE_CAP = 1000
 # ---------------------------------------------------------------------------
 # Step 14 — property/resemblance columns as predictors of pathogen activity.
 #

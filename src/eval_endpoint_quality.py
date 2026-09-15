@@ -169,6 +169,84 @@ def jaccard_endpoint_stats(pairs):
     return out
 
 
+def overlap_endpoint_pairs(overlap_matrix, nodes):
+    """Directed long-format raw top-1000 shared-actives COUNT pairs over ``nodes`` (not Jaccard).
+
+    Same shape as :func:`jaccard_endpoint_pairs` — a thin wrapper over
+    :func:`eval_correlations.column_metric_pairs` over step 09's cached
+    ``09_overlap_top1000_baseline_matrix.csv`` (:func:`eval_correlations.topn_overlap_matrix`) —
+    with the value column renamed ``overlap``. Symmetric, so it has no direction, same as Jaccard.
+    """
+    pairs = column_metric_pairs(overlap_matrix.loc[nodes, nodes])
+    pairs = pairs.rename(columns={"value": "overlap"})
+    for side, col in (("node", "endpoint"), ("partner", "peer")):
+        parsed = pairs[side].map(parse_named_column)
+        pairs[col] = [_endpoint_key(p[1], p[2]) for p in parsed]
+    return pairs
+
+
+def overlap_endpoint_stats(pairs):
+    """Per-endpoint same/different-pathogen raw top-1000 overlap-count medians and their difference.
+
+    Same same-pathogen pairing as :func:`jaccard_endpoint_stats` (both are symmetric metrics over the
+    identical node set), so ``n_peers``/``n_same_model_peers`` are NOT repeated here — they are
+    already carried by ``jac_stats`` in :func:`endpoint_quality_table`'s join, and duplicating them
+    under the same name would collide. A NEGATIVE ``overlap_specificity`` means the endpoint's
+    top-1000 shares MORE compounds, in absolute count, with other pathogens' endpoints than with its
+    own — reported, never filtered.
+    """
+    same = pairs[pairs["category"] == "same_pathogen"]
+    diff = pairs[pairs["category"] == "different_pathogen"]
+    out = pd.DataFrame({
+        "overlap_same_median": same.groupby("endpoint")["overlap"].median(),
+        "overlap_diff_median": diff.groupby("endpoint")["overlap"].median(),
+    })
+    out["overlap_specificity"] = out["overlap_same_median"] - out["overlap_diff_median"]
+    return out
+
+
+def bedroc_endpoint_pairs(self_perf, meta):
+    """Directed BEDROC(alpha=20) pairs from step 09's ``09_activity_self_performance.csv``
+    (``value_bedroc`` column), restricted to scope.
+
+    Same filtering/labelling as :func:`auroc_endpoint_pairs` — both metrics are read off the SAME
+    directed self-performance frame, computed from the same ranks in
+    :func:`eval_predictor_performance.activity_self_performance`.
+    """
+    pathogen = meta.set_index("endpoint")["pathogen"]
+    keep = set(meta["endpoint"])
+    block = self_perf[self_perf["predictor_endpoint"].isin(keep)
+                      & self_perf["target_endpoint"].isin(keep)
+                      & ~self_perf["self_pair"]].copy()
+    block = block.rename(columns={"predictor_endpoint": "endpoint",
+                                  "target_endpoint": "peer", "value_bedroc": "bedroc"})
+    block["pathogen"] = block["endpoint"].map(pathogen)
+    block["peer_pathogen"] = block["peer"].map(pathogen)
+    block["category"] = np.where(block["pathogen"] == block["peer_pathogen"],
+                                 "same_pathogen", "different_pathogen")
+    return block[["endpoint", "peer", "pathogen", "peer_pathogen", "category",
+                  "same_model", "bedroc"]]
+
+
+def bedroc_endpoint_stats(pairs):
+    """Per-endpoint outgoing BEDROC(alpha=20) agreement: this endpoint's raw score ranking its
+    peers' actives, with early-recognition weighting.
+
+    Only the OUTGOING direction is reported (mirrors :func:`auroc_endpoint_stats`'s ``auroc_out_*``
+    columns) — this panel asks "can this endpoint uprank its peers", not the incoming/predictability
+    question. No chance-level count is reported here (unlike ``n_below_chance_peers`` for AUROC):
+    BEDROC's random-ranking expectation is alpha- and prevalence-dependent and is not derived here.
+    """
+    same = pairs[pairs["category"] == "same_pathogen"]
+    diff = pairs[pairs["category"] == "different_pathogen"]
+    out = pd.DataFrame({
+        "bedroc_out_same_median": same.groupby("endpoint")["bedroc"].median(),
+        "bedroc_out_diff_median": diff.groupby("endpoint")["bedroc"].median(),
+    })
+    out["bedroc_out_specificity"] = out["bedroc_out_same_median"] - out["bedroc_out_diff_median"]
+    return out
+
+
 def auroc_endpoint_pairs(self_perf, meta):
     """Directed AUROC pairs from step 09's ``09_activity_self_performance.csv``, restricted to scope.
 
@@ -262,8 +340,14 @@ def confounder_stats(predictor_perf, meta, chance=PREDICTOR_CHANCE_LEVEL):
                 .rename_axis("endpoint"))
 
 
-def endpoint_quality_table(meta, jac_stats, auroc_stats, conf_stats=None):
-    """The master per-endpoint frame: metadata + both agreement metrics + the confounder check.
+def endpoint_quality_table(meta, jac_stats, auroc_stats, overlap_stats=None, bedroc_stats=None,
+                           conf_stats=None):
+    """The master per-endpoint frame: metadata + every agreement metric + the confounder check.
+
+    ``overlap_stats`` (:func:`overlap_endpoint_stats`) and ``bedroc_stats``
+    (:func:`bedroc_endpoint_stats`) are optional, alternative-metric siblings of ``jac_stats`` /
+    ``auroc_stats`` added for the endpoint-specificity panel comparison (2026-09-03) — raw top-1000
+    overlap count and BEDROC(alpha=20), rather than Jaccard ratio and plain AUROC.
 
     ``conf_stats`` is optional (default ``None``): step 09 builds this table before step 14's
     property-predictor analysis has run, so it calls this with the Jaccard/AUROC statistics only.
@@ -278,7 +362,10 @@ def endpoint_quality_table(meta, jac_stats, auroc_stats, conf_stats=None):
     No row is ever dropped and no flag column is added: the table is a ranking, and deciding which
     endpoints are genuinely off is left to the reader.
     """
-    parts = [jac_stats, auroc_stats] + ([conf_stats] if conf_stats is not None else [])
+    parts = [jac_stats, auroc_stats]
+    for extra in (overlap_stats, bedroc_stats, conf_stats):
+        if extra is not None:
+            parts.append(extra)
     out = meta.set_index("endpoint").join(parts).reset_index()
     out = out.sort_values("auroc_out_same_median", ascending=True).reset_index(drop=True)
     out["rank_overall"] = out["auroc_out_same_median"].rank(method="min").astype("Int64")

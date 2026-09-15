@@ -368,6 +368,48 @@ def topn_jaccard_matrix(matrix, n, verbose=False):
         jac = np.where(union > 0, inter / union, np.nan)
     return pd.DataFrame(jac, index=nodes, columns=nodes)
 
+
+def topn_overlap_matrix(matrix, n, verbose=False):
+    """Pairwise RAW top-``n`` intersection COUNT between columns (not Jaccard).
+
+    Same top-``n`` membership masks as :func:`topn_jaccard_matrix` — same ``np.argpartition``
+    algorithm, same NaN-aware "fewer than n finite values -> smaller set" handling — but returns
+    the raw intersection count ``inter`` directly rather than the union-normalized ratio. When both
+    columns have >= ``n`` finite values (true everywhere this is used so far), both top-``n`` sets
+    have exactly ``n`` members, so ``jaccard = inter / (2n - inter)`` is a monotone re-expression of
+    this same count — this is the version a reader can act on directly ("804 of the 1000 shared"),
+    the same reasoning behind step 10's own raw-count overlap matrix
+    (:func:`eval_auroc_matrix.overlap_matrix`), independently reimplemented here as a plain
+    column x column matrix (that one is organism/predictor-shaped, this one is column-generic).
+
+    A DIFFERENT function rather than a shared code path with :func:`topn_jaccard_matrix`
+    (duplicated masking loop): that function's cached output already backs step 09's committed
+    CSVs, so it is left untouched rather than refactored to share a helper.
+    """
+    nodes = list(matrix.columns)
+    values = matrix.to_numpy(dtype=np.float32, copy=False)
+    n_rows = values.shape[0]
+    n = min(n, n_rows)
+    mask = np.zeros(values.shape, dtype=bool)
+    for j in range(values.shape[1]):
+        col = values[:, j]
+        finite = np.isfinite(col)
+        if finite.all():
+            idx = np.argpartition(-col, n - 1)[:n]
+        else:
+            where = np.flatnonzero(finite)
+            sub = col[where]
+            k = min(n, sub.shape[0])
+            idx = where[np.argpartition(-sub, k - 1)[:k]] if k else where[:0]
+        mask[idx, j] = True
+        if verbose and (j + 1) % 50 == 0:
+            print(f"  [topn-overlap] top-{n} mask: {j + 1}/{values.shape[1]} columns")
+
+    fmask = mask.astype(np.float32)
+    inter = fmask.T @ fmask
+    del fmask
+    return pd.DataFrame(inter, index=nodes, columns=nodes)
+
 def parse_named_column(name):
     """Split a ``"{pathogen}__{model_id}__{column_name}"`` column name into its three parts.
 

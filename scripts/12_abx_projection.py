@@ -36,6 +36,11 @@ this matrix's columns can never disagree with the AUROC matrix's rows. See
 :mod:`eval_abx_enrichment` for the contingency-table definition (missing values excluded per class,
 degenerate constant-zero classes report ``NaN``, not a misleading computed value).
 
+Drawn twice: the heatmap (:func:`plots_abx_enrichment.save_enrichment_figure`) and a more compact
+bubble-grid alternative encoding the same odds ratio/significance as size/edge style instead of
+in-cell text (:func:`plots_abx_enrichment.save_enrichment_bubble_figure`) — both land in this step's
+output directory so the two can be compared.
+
     python 08_property_matrices.py
     python 11_reference_library_projection.py
     python 12_abx_projection.py
@@ -49,6 +54,8 @@ Outputs
     output/12_abx_projection/12_abx_enrichment_pvalue.csv      (38 x 15 wide matrix)
     output/12_abx_projection/png|pdf/12_umap_abx_endpoints_max1000.*
     output/12_abx_projection/png|pdf/12_abx_enrichment_matrix.*
+    output/12_abx_projection/png|pdf/12_abx_enrichment_bubbles.*
+    output/12_abx_projection/png|pdf/12_abx_enrichment_bubbles_key.*
     output/12_abx_projection/figure_cells.json
 """
 
@@ -67,7 +74,7 @@ from default import (  # noqa: E402
 from eval_abx_enrichment import run_all as run_abx_enrichment  # noqa: E402
 from eval_abx_matrix import endpoint_highlights, load_umap  # noqa: E402
 from eval_property_matrix import property_endpoint_stats  # noqa: E402
-from plots_abx_enrichment import save_enrichment_figure  # noqa: E402
+from plots_abx_enrichment import save_enrichment_bubble_figure, save_enrichment_figure  # noqa: E402
 from plots_abx_projection import save_abx_projection_figure  # noqa: E402
 
 config_dir = os.path.join(root, "..", "config")
@@ -170,5 +177,7 @@ omitted = odds_ratio.index[~informative].tolist()
 print(f"\n[abx-matrix] figure: {informative.sum()} of {len(odds_ratio)} eos19mt classes have "
       f"signal ({len(omitted)} omitted, all-NaN/zero against every pathogen): {omitted}")
 save_enrichment_figure(output_dir, odds_ratio.loc[informative], p_value.loc[informative], pathogens)
+save_enrichment_bubble_figure(output_dir, odds_ratio.loc[informative], p_value.loc[informative],
+                              pathogens)
 
 print(f"\nDone -> {output_dir}")

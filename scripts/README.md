@@ -1548,6 +1548,30 @@ step 15 carried here are gone; step 14 now writes its own confounder table, see 
 `09_endpoint_ranked_tail`, a plain-matplotlib **diagnostic** sized in inches by its row count, since
 it carries one label per endpoint and cannot stay legible at page width).
 
+**Two alternative-metric siblings of `09_endpoint_specificity` (2026-09-03, user-directed), drawn for
+a readability comparison, not as a replacement:**
+- **`09_endpoint_specificity_overlap`** — same same-pathogen-vs-different-pathogen scatter, axes swapped
+  from AUROC to the median **raw top-1000 shared-actives COUNT** (not Jaccard): how many of the two
+  endpoints' top-1000 highest-scoring compounds are literally the same compound, via
+  `eval_correlations.topn_overlap_matrix` (the same function step 15 already uses for a single
+  pathogen), computed once over the full 307x307 set and cached as
+  `09_overlap_top1000_baseline_matrix.csv`. Cross-checked against the existing baseline Jaccard cache
+  by converting back (`jaccard = inter / (2*1000 - inter)`, exact here since every endpoint has far
+  more than 1000 scored compounds) — asserted at runtime, not assumed.
+- **`09_endpoint_specificity_bedroc`** — same scatter, axes swapped to median **BEDROC(alpha=20)**
+  (`src/metrics.py`, the same early-recognition metric and alpha already used for step 05's EU
+  OpenScreen validation), computed from the SAME tie-averaged ranks the AUROC self-performance grid
+  already builds (`eval_predictor_performance.bedroc_from_ranks`, one extra column —
+  `value_bedroc` — on `09_activity_self_performance.csv`, no second parquet pass). Spot-checked
+  against the reference `metrics.bedroc` implementation on a random sample of pairs each run.
+
+**Neither new panel carries a chance-level reference line — only the identity diagonal (user-directed).**
+AUROC's 0.5 has no clean analogue here: the expected overlap of two UNRELATED top-1000 sets over the
+~1.35M-compound library is a small, near-zero count, and BEDROC's random-ranking expectation depends
+on both alpha and prevalence and was not derived. `overlap_specificity` and `bedroc_out_specificity`
+follow the same `same_median - diff_median` sign convention as `jac_specificity`/`auroc_out_specificity`
+throughout.
+
 ## 10_auroc_matrix.py
 Collapses each organism's activity endpoints into **one score per organism**, then draws the AUROC
 matrix: **15 organism rows x 17 columns** (the same 15 organism aggregates, then the two merged
@@ -2531,3 +2555,168 @@ arithmetic, unlike the 2026-08-11 `clogp` shift, which needed the independent ch
 masking bug. The delta table is written to `10_nonabx_auroc_delta_vs_full.csv` and reported, never
 asserted against a bound — **this is an observation, not a conclusion**; the interpretation is a
 scientific call.
+
+## 15_pathogen_endpoint_matrix.py
+
+The start of a "detailed analysis of enrichment for the endpoints of one single organism." Draws
+the raw endpoint x endpoint top-1000 shared-actives matrix for ONE pathogen at a time — the detailed
+view step 09's own same-pathogen/different-pathogen box plots average away. **Scope: `RUNS`, a short
+explicit list, not a loop over all 15 pathogens of interest** — looping over the rest of
+`config/pathogens_of_interest.csv` is a natural follow-up once the shape of the analysis is agreed
+with the user; this step is deliberately opt-in, one pathogen at a time.
+
+**Cell value: the RAW top-1000 shared-actives COUNT, not Jaccard (user-directed, 2026-09-03,
+replacing an initial Jaccard-index version).** How many of the two endpoints' top-1000
+highest-scoring compounds are the literal same compounds — the quantity step 10's own overlap matrix
+draws (`eval_auroc_matrix.overlap_matrix`), here computed generically per column pair by
+`eval_correlations.topn_overlap_matrix` (a new sibling of `topn_jaccard_matrix`, ADDED rather than
+sharing code with it — that function's cached output already backs step 09's committed CSVs, so it
+was left untouched). The underlying top-1000 SETS still need no new computation for E. coli's 24
+endpoints (step 09 already validated them), but the cache stores the Jaccard ratio, not the count,
+so getting the count means one fresh top-1000 pass over the pathogen's raw columns (read from step
+07's parquet). Cross-checked against the step-09 cache by converting back to Jaccard
+(`jaccard = inter / (2*CUTOFF - inter)`, EXACT here since every endpoint has far more than 1000
+scored compounds, not merely approximate) — passed at max |delta| ~1e-8 on every run so far.
+
+**An extra predictor node, one per pathogen, per `RUNS[*]["predictor_family"]` (user-directed,
+2026-09-03): `abx` (resemblance-to-known-antibiotics) for E. coli, `cytotox` (cytotoxicity) for
+P. falciparum.** Neither is in step 09's cache — step 09 is bioactivity-only by design — so each is
+folded into its pathogen's own fresh top-1000 pass above, over the pathogen's raw endpoint columns
+plus step 10's own merged `{family}__merged__rank_sum` column
+(`eval_auroc_matrix.merged_predictor_scores`, only the one family named in that pathogen's `RUNS`
+entry). `eval_predictor_performance._assert_key_alignment` verifies the parquet and each family's
+CSV (`08_abx_matrix_named.csv` / `08_cytotox_matrix_named.csv`, from `PREDICTOR_CSV`) share one row
+order before the two are combined positionally, the same guard step 10 runs before its own merge —
+checked once per distinct family actually used in `RUNS`, not once per pathogen.
+
+**P. falciparum (malaria) added 2026-09-03, with a `consensus_only` collapse (user-directed).**
+P. falciparum has 64 selected bioactivity endpoints — `eos4an7` ("antimicrobial-activity-
+pfalciparum") alone contributes 24 raw ChEMBL/PubChem sub-assay columns plus its own
+`consensus_score`. At the fixed 180x180 mm page-width footprint this step draws at (see below), a
+65 x 65 matrix (64 + the extra predictor node) would put each cell at ~2.8 mm — too small to keep
+the printed values legible. Asked how to handle it; the user's answer was to shrink the node count
+rather than resize the figure: `_select_endpoints` collapses any model with a `consensus_score`
+among its selected columns down to just that one column (models without one are untouched). This
+takes `eos4an7` from 24 columns to 1, bringing P. falciparum to 13 bioactivity nodes + 1 predictor =
+14 — close in scale to E. coli's 25. The rule is opt-in per `RUNS` entry
+(`consensus_only=True`/`False`); E. coli's `False` draws every one of its 24 bioactivity endpoints.
+
+Figure (`src/plots_pathogen_endpoint_matrix.py`, `PathogenEndpointMatrixPlot`) follows the same
+conventions as step 10's matrices (`src/plots_auroc_matrix.py`): diagonal blanked to NaN with a
+dashed outline (self-overlap is `CUTOFF` by construction, not a measurement), continuous colour
+scale via `plotting_utils.spectrum_cmap(OVERLAP_MATRIX_SPECTRUM)` with `Normalize(0, top_n)` —
+literally step 10's own raw-count `continuous_color=True` overlap-matrix scale, now reused here
+instead of diverging from it. A left-hand colour track (one swatch per source model — plus the
+extra predictor as its own group — via `plotting_colors.distinct_colors`) plus a legend groups
+same-model endpoints (e.g. E. coli's eos5eya, 11 ChEMBL sub-columns) so cross-model vs. same-model
+agreement is visible at a glance, not just readable off the axis labels. `cells=(6, 6)` — full
+180x180 mm page width — for every pathogen currently in `RUNS`.
+
+Console summary reports strongest/weakest pairs (as integer counts), per-group and per-sensitivity
+(wild-type/sensitized/resistant/predictor) counts, and flags (not filters) any node whose median
+shared-actives count against every other node in that pathogen's own matrix sits below
+`round(0.05 * CUTOFF)` — an informal report threshold carried over from the metric this step used
+before switching to counts, not a scientific cutoff (nothing is dropped on it). E.g. E. coli's
+`eos5nqn` sensitized-strain columns, or (unsurprisingly, given the aggressive collapse) most of
+P. falciparum's 14 nodes. Interpreting *why* is left to the user, per `CLAUDE.md`'s sign-off rules.
+
+**Output filenames changed with the metric switch** (`15_{code}_overlap_top1000_matrix.csv` /
+`15_{code}_endpoint_overlap_top1000_matrix.*`, was `..._jaccard_...`) — the earlier Jaccard-named
+files are left on disk from the prior run rather than deleted automatically (`CLAUDE.md`: never
+delete files without explicit confirmation).
+
+**Chord (circos-style) diagrams, one per mode in `RUNS[*]["chord"]` (a list; currently
+`["cluster", "abx"]` for E. coli only), added 2026-09-03 (user-directed) as ALTERNATIVE views of the
+exact same matrix — no new data, the same `sub`/`model_id` `run_pathogen` already built.**
+`PathogenChordPlot` (`src/plots_pathogen_endpoint_matrix.py`) places the bioactivity endpoints on a
+ring and draws a proper circos RIBBON (wide where it leaves each endpoint's own arc span, pinched
+toward the centre) between every pair with a nonzero shared-actives count — coloured by that count,
+on the identical `Normalize(0, CUTOFF)` scale the matrix's own colorbar uses, so the two figures read
+as one system. No filtering happens: a zero-count pair is simply not drawn, so an endpoint that turns
+out to correlate with nothing in this set shows exactly that — a ring position with no ribbons —
+rather than being pre-judged out.
+
+**Built on pyCirclize (`Circos.chord_diagram`), an explicit, user-confirmed exception to this repo's
+"stylia only" plotting rule (`CLAUDE.md`), scoped to the chord figure alone.** The first version drew
+ribbons as plain matplotlib line strokes (uniform width along their length); that can never produce
+the wide-at-the-rim, pinched-at-the-centre shape a real circos ribbon needs — that shape comes from
+each ribbon claiming a genuine ARC SPAN on both its endpoints, proportional to that link's share of
+the endpoint's total connectivity, which pyCirclize solves rather than hand-rolled Bezier geometry.
+`pycirclize==1.10.1` was added to `requirements.txt` (pulls in `biopython` transitively — pyCirclize's
+own genomic-track features, unused here). Two correctness/integration issues found and fixed while
+building this:
+- **`Circos.chord_diagram` treats its input as a DIRECTED matrix.** Fed the full symmetric
+  shared-count matrix it draws every pair TWICE (verified against toy data: a 3-node symmetric matrix
+  produced 6 links and double-counted sector sizes). Fixed by zeroing the lower triangle before
+  handing the matrix over, using a rule fixed by each label's position in the ORIGINAL column order —
+  independent of whichever ring `order` is active — so the same pair is never dropped or duplicated
+  regardless of ring order.
+- **The predictor bar track needs a visible edge colour, not just a fill.** `Track.bar(..., ec="none")`
+  rendered completely invisibly in the full pipeline (though NOT in simplified reproductions using a
+  contrasting palette) — the ribbons converge from the ideogram ring right through the bar track's own
+  radius band, and a same-magnitude ribbon is the exact same colour as the bar sitting on top of it.
+  Caught by forcing a black edge on the bars during debugging and comparing; fixed with a permanent
+  `ec=INK, lw=0.5` on every bar.
+- Separately, `circos.colorbar(...)` must be called BEFORE `circos.plotfig(...)`, not after — it only
+  queues a deferred draw function that `plotfig()` executes once; called afterward, the queued draw
+  never fires and the colorbar silently never appears.
+
+`Circos.plotfig(ax=polar_ax)` accepts an existing `PolarAxes` — `_new_polar_axes(cells)` builds one
+sized by the exact same cells-grid maths `BasePlot.__init__` uses (`stylia.create_figure` has no
+`projection="polar"` support), then hands it to `BasePlot.__init__`'s normal "ax was supplied"
+branch, so `BasePlot.save()` (PNG + PDF via `stylia.save_figure`) needed no changes.
+
+**Known cosmetic limitation, not fixed:** pyCirclize's own sector-label placement can crowd two
+very-low-connectivity neighbouring sectors' labels together (E. coli's `eos5nqn:hts_activity` /
+`eos5nqn:tolc_activity`, both near-zero-degree nodes) — a real circos-diagram trade-off when sector
+arc width is proportional to connectivity, not something worth fighting pyCirclize's own layout for.
+
+**Two ring-ordering modes** (`_ordered_labels`), because the FIRST version placed endpoints in the
+matrix's model-grouped order and — with ribbons between essentially every pair — looked like an
+arbitrary mandala rather than showing structure:
+- `order="cluster"`: hierarchical clustering on `CUTOFF - shared_count` as the dissimilarity
+  (`scipy.cluster.hierarchy.linkage(..., optimal_ordering=True)`, SciPy's actual optimal-leaf-
+  ordering algorithm — minimizes the sum of distances between RING-ADJACENT leaves, not just a plain
+  dendrogram traversal — the same family of technique step 10's phylogeny dendrogram already uses in
+  this repo, applied here to connectivity instead of taxonomy). Endpoints that share a lot of
+  compounds end up adjacent, so strong ribbons become short local arcs and real structure becomes
+  visible: on the current data this pulls out one visibly tight, highly-connected block (the
+  wild-type/ATCC/consensus-heavy endpoints) with the weak/near-isolated columns (several `eos5eya`
+  ChEMBL sub-columns, `eos5nqn`'s two sensitized-strain columns) pushed to the opposite arc, barely
+  linked to anything. This generally does NOT keep same-model endpoints adjacent — it orders by
+  actual connectivity instead, which is the point.
+- `order="abx"` (by convention, the pathogen's own `predictor_family`): a direct descending sort by
+  overlap with the predictor node, placed clockwise from 12 o'clock — verified on the rendered figure
+  to run monotonically from `eos3f8h:ecoli` (348 of 1000) down to `eos5nqn:tolc_activity` (0). A
+  different question from clustering, answered independently of ribbon structure: "which endpoints
+  look most like a known antibiotic," as a ranking.
+
+Output filenames carry the mode (`15_ecoli_endpoint_chord_top1000_cluster.*` /
+`..._abx.*`) — the original unsuffixed `15_ecoli_endpoint_chord_top1000.*` from the single-order
+version is left on disk, not deleted (`CLAUDE.md`: never delete without confirmation).
+
+**The chord figures ALSO collapse each model to its consensus score (user-directed, 2026-09-03) —
+`_collapse_to_consensus` (`scripts/15_pathogen_endpoint_matrix.py`), applied to a `chord_sub`/
+`chord_model_id` copy right before the chord loop, never to `sub` itself, so the matrix keeps every
+endpoint unchanged.** Same rule as `_select_endpoints`'s `consensus_only` (any model with a
+`"{model}:consensus_score"` label among its columns keeps only that label; a model with none,
+including the predictor node, is untouched), just applied post-hoc by label instead of pre-hoc on
+the selection CSV. For E. coli this takes `eos5eya` from 13 raw ChEMBL/PubChem sub-columns down to
+its own `consensus_score`, and the chord node count from 25 to 13 — a reader comparing 24 crowded
+ribbons gets more signal from one ribbon per model than from a model's own sub-assays mostly talking
+to each other. Printed when it changes anything (`"chord figures collapsed N -> M nodes"`).
+
+**The predictor node (`abx` for E. coli) is deliberately NOT a 25th ribbon node.** Per the user's
+explicit request, it is drawn as a radial bar track around the ring instead — one
+`matplotlib.patches.Wedge` (an annular sector; its own `width` argument makes it a polar bar with no
+custom geometry needed) per endpoint, length/colour on the same scale as the ribbons, plus one dashed
+reference circle at a round value for scale. This keeps "how antibiotic-like does this endpoint's
+own top-1000 look" a single glance around the ring rather than one more crowded ribbon.
+
+A small `_model_color_map(model_id)` helper was extracted from `PathogenEndpointMatrixPlot`'s
+previously-inline 2 lines and is now shared by both classes, so a model always gets the exact same
+colour on the matrix's track and the chord diagram's node dots — checked visually, not just by
+construction. The legend's vertical position is measured (`Text.get_window_extent`, not guessed) to
+sit just below the lowest rendered endpoint label — chord labels radiate outward by varying amounts
+depending on rotation, so a fixed axes-fraction offset (the matrix figure's approach) either
+overlapped the bottom labels or left an oversized gap.

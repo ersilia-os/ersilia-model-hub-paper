@@ -89,6 +89,7 @@ Reporting choices worth knowing:
 Outputs
 -------
     output/09_bioactivity_endpoints/09_jaccard_top1000_baseline_matrix.csv          (307x307, reused)
+    output/09_bioactivity_endpoints/09_overlap_top1000_baseline_matrix.csv         (307x307, raw count)
     output/09_bioactivity_endpoints/09_pathogen_jaccard_top1000_baseline_summary.csv
     output/09_bioactivity_endpoints/png/09_pathogen_jaccard_top1000_baseline.png
     output/09_bioactivity_endpoints/pdf/09_pathogen_jaccard_top1000_baseline.pdf
@@ -104,6 +105,8 @@ Outputs
     output/09_bioactivity_endpoints/png|pdf/09_endpoint_*.{png,pdf}
     output/09_bioactivity_endpoints/png|pdf/09_performance_activity_by_organism.{png,pdf}
     output/09_bioactivity_endpoints/png|pdf/09_performance_pathogen_subset.{png,pdf}
+    output/09_bioactivity_endpoints/09_auroc_top1000_pair_distribution_pairs.csv (15 pathogens, no MIN_ENDPOINTS filter)
+    output/09_bioactivity_endpoints/png|pdf/09_auroc_top1000_pair_distribution.{png,pdf}
     output/09_bioactivity_endpoints/figure_cells.json
 """
 
@@ -120,6 +123,7 @@ sys.path.append(os.path.join(root, "..", "src"))
 
 from default import (  # noqa: E402
     ACTIVITY_BINARIZE_TOP_N, ANNOTATION_PREDS_SUBDIR, ORGANISM_CLASS_ORDER, PREDICTOR_CHANCE_LEVEL,
+    RANDOM_SEED,
 )
 from eval_correlations import (  # noqa: E402
     build_named_score_matrix,
@@ -130,20 +134,26 @@ from eval_correlations import (  # noqa: E402
     pathogen_metric_summary,
     scale_matrix,
     topn_jaccard_matrix,
+    topn_overlap_matrix,
 )
 from eval_endpoint_quality import (  # noqa: E402
     auroc_endpoint_pairs,
     auroc_endpoint_stats,
+    bedroc_endpoint_pairs,
+    bedroc_endpoint_stats,
     endpoint_nodes,
     endpoint_quality_table,
     jaccard_endpoint_pairs,
     jaccard_endpoint_stats,
+    overlap_endpoint_pairs,
+    overlap_endpoint_stats,
     pathogen_endpoint_summary,
 )
 from eval_group_jaccard import class_metric_boxes, class_metric_pairs, class_metric_summary  # noqa: E402
 from eval_predictor_performance import run_activity_self_performance  # noqa: E402
 from plots_endpoint_quality import (  # noqa: E402
-    save_activity_self_figure, save_endpoint_quality_figures, save_pathogen_subset_figure,
+    save_activity_self_figure, save_auroc_pair_distribution_figure, save_endpoint_quality_figures,
+    save_pathogen_subset_figure,
 )
 from plots_matrix_analyses import group_jaccard_figure, pathogen_jaccard_figure  # noqa: E402
 
@@ -175,10 +185,23 @@ VARIANTS = [
 # 1. The 307x307 baseline Jaccard matrix (cached)                                #
 # ----------------------------------------------------------------------------- #
 jaccards = {}
+
+# The raw top-CUTOFF intersection COUNT (not Jaccard) matrix, cached alongside the Jaccard one for
+# the "baseline" variant only — the sole variant §4 (endpoint specificity) reads. New (2026-09-03,
+# user-directed): the endpoint-specificity panel wants "how many compounds are literally shared",
+# not the union-normalized ratio, via eval_correlations.topn_overlap_matrix (the same function step
+# 15 already uses for a single pathogen at a time).
+overlap_path = os.path.join(output_dir, f"09_overlap_top{CUTOFF}_baseline_matrix.csv")
+need_overlap = not os.path.exists(overlap_path)
+overlap = None
+if not need_overlap:
+    overlap = pd.read_csv(overlap_path, index_col=0)
+    print(f"[pathogen-jaccard] overlap: reusing cached {os.path.basename(overlap_path)}")
+
 missing = [v for v in VARIANTS
            if not os.path.exists(os.path.join(output_dir, f"09_jaccard_top{CUTOFF}_{v[0]}_matrix.csv"))]
 base = None
-if missing:
+if missing or need_overlap:
     t0 = time.time()
     base = build_named_score_matrix(
         pred_dir=pred_dir, endpoint_selection_path=endpoint_selection_path,
@@ -188,18 +211,28 @@ if missing:
 
 for slug, label, derive in VARIANTS:
     jac_path = os.path.join(output_dir, f"09_jaccard_top{CUTOFF}_{slug}_matrix.csv")
+    variant = None
     if os.path.exists(jac_path):
         jaccards[slug] = pd.read_csv(jac_path, index_col=0)
         print(f"[pathogen-jaccard] {slug}: reusing cached {os.path.basename(jac_path)}")
-        continue
-    t0 = time.time()
-    variant = derive(base)
-    jac = topn_jaccard_matrix(variant, CUTOFF)
+    else:
+        t0 = time.time()
+        variant = derive(base)
+        jac = topn_jaccard_matrix(variant, CUTOFF)
+        jac.to_csv(jac_path)
+        jaccards[slug] = jac
+        print(f"[pathogen-jaccard] {slug}: top-{CUTOFF} Jaccard {jac.shape} in "
+              f"{time.time() - t0:.1f}s -> {os.path.basename(jac_path)}")
+
+    if slug == "baseline" and need_overlap:
+        if variant is None:
+            variant = derive(base)
+        t0 = time.time()
+        overlap = topn_overlap_matrix(variant, CUTOFF)
+        overlap.to_csv(overlap_path)
+        print(f"[pathogen-jaccard] overlap: top-{CUTOFF} raw count matrix {overlap.shape} in "
+              f"{time.time() - t0:.1f}s -> {os.path.basename(overlap_path)}")
     del variant
-    jac.to_csv(jac_path)
-    jaccards[slug] = jac
-    print(f"[pathogen-jaccard] {slug}: top-{CUTOFF} Jaccard {jac.shape} in "
-          f"{time.time() - t0:.1f}s -> {os.path.basename(jac_path)}")
 
 # The scaling-invariance claim is asserted, not assumed: if a future change to scale_matrix broke
 # monotonicity, the "baseline covers all three" label would silently become a lie.
@@ -209,6 +242,20 @@ if base is not None:
         same = np.allclose(jaccards["baseline"].to_numpy(), other.to_numpy(), equal_nan=True)
         print(f"[pathogen-jaccard] check: baseline == {name} top-{CUTOFF} Jaccard -> {same}")
     del base
+
+# Cross-check the raw overlap-count cache against the Jaccard one: every endpoint has far more than
+# CUTOFF scored compounds, so both top-CUTOFF sets always have exactly CUTOFF members and
+# jaccard = inter / (2*CUTOFF - inter) holds without approximation — the same identity step 15
+# already verifies for a single pathogen, checked here over the full 307x307 matrix before the
+# overlap cache is trusted downstream (§4).
+with np.errstate(divide="ignore", invalid="ignore"):
+    overlap_as_jaccard = overlap.to_numpy() / (2 * CUTOFF - overlap.to_numpy())
+overlap_delta = np.nanmax(np.abs(overlap_as_jaccard - jaccards["baseline"].to_numpy()))
+assert overlap_delta < 1e-6, (
+    f"raw overlap-count matrix does not reproduce the cached baseline Jaccard matrix (max |delta| "
+    f"{overlap_delta:.2e}) — the two caches disagree.")
+print(f"[pathogen-jaccard] check: overlap-derived Jaccard == cached baseline Jaccard "
+      f"(max |delta| {overlap_delta:.2e})")
 
 # ----------------------------------------------------------------------------- #
 # 2. Per-pathogen aggregation and figure, per threshold
@@ -364,24 +411,67 @@ assert counts.sort_index().equals(expected.sort_index()), (
     f"endpoint counts disagree with {endpoint_selection_path}:\n"
     f"{pd.DataFrame({'nodes': counts, 'config': expected}).to_string()}")
 
-# 4c. The two metrics, per endpoint. No confounder check here — that needs step 14's property-
-# predictor data, which does not exist yet; it is added by step 14 once it does.
+# 4c. The four metrics, per endpoint — Jaccard/AUROC plus the raw top-1000 overlap count and
+# BEDROC(alpha=20) siblings added 2026-09-03 for the endpoint-specificity panel comparison. No
+# confounder check here — that needs step 14's property-predictor data, which does not exist yet;
+# it is added by step 14 once it does.
 jac_pairs = jaccard_endpoint_pairs(jaccard, nodes)
 auroc_pairs = auroc_endpoint_pairs(self_perf, meta)
+overlap_pairs = overlap_endpoint_pairs(overlap, nodes)
+bedroc_pairs = bedroc_endpoint_pairs(self_perf, meta)
 jac_stats = jaccard_endpoint_stats(jac_pairs)
 auroc_stats = auroc_endpoint_stats(auroc_pairs)
-print(f"[endpoint-quality] {len(jac_pairs):,} Jaccard pairs, {len(auroc_pairs):,} AUROC pairs")
+overlap_stats = overlap_endpoint_stats(overlap_pairs)
+bedroc_stats = bedroc_endpoint_stats(bedroc_pairs)
+print(f"[endpoint-quality] {len(jac_pairs):,} Jaccard pairs, {len(auroc_pairs):,} AUROC pairs, "
+      f"{len(overlap_pairs):,} overlap-count pairs, {len(bedroc_pairs):,} BEDROC pairs")
 
-table = endpoint_quality_table(meta, jac_stats, auroc_stats)
+# Spot-check: this rank-based BEDROC kernel must agree with the reference argsort-based formula in
+# metrics.bedroc, over the SAME raw score/binarization pair — a handful of pairs, not the full grid,
+# since metrics.bedroc re-sorts each column from scratch. NaN scores are excluded the same
+# pairwise-complete way activity_self_performance already does, via a remap into the valid-only
+# index space, so a predictor with unscored compounds (e.g. eos6ojg) is checked consistently too.
+from metrics import bedroc as _reference_bedroc  # noqa: E402  (local: spot-check only)
+_check_pairs = bedroc_pairs.sample(n=min(20, len(bedroc_pairs)), random_state=RANDOM_SEED)
+_score_cache = {}
+_max_bedroc_delta = 0.0
+for _r in _check_pairs.itertuples():
+    if _r.endpoint not in _score_cache:
+        _raw = pd.read_parquet(full_matrix_cache_path, columns=[_r.endpoint]).iloc[:, 0].to_numpy()
+        _valid = ~np.isnan(_raw)
+        _remap = np.full(len(_raw), -1, dtype=np.int64)
+        _remap[_valid] = np.arange(int(_valid.sum()))
+        _score_cache[_r.endpoint] = (_raw[_valid], _remap)
+    _scores_valid, _remap = _score_cache[_r.endpoint]
+    _idx = _remap[tops[_r.peer]]
+    _idx = _idx[_idx >= 0]
+    _y = np.zeros(len(_scores_valid), dtype=int)
+    _y[_idx] = 1
+    _ref = _reference_bedroc(_y, _scores_valid)
+    _max_bedroc_delta = max(_max_bedroc_delta, abs(_ref - _r.bedroc))
+del _score_cache
+print(f"[endpoint-quality] BEDROC spot-check: {len(_check_pairs)} pairs vs metrics.bedroc, "
+      f"max |delta| = {_max_bedroc_delta:.2e}")
+assert _max_bedroc_delta < 1e-6, (
+    "bedroc_from_ranks disagrees with the reference metrics.bedroc implementation by "
+    f"{_max_bedroc_delta:.2e} — the rank-based kernel is likely wrong.")
+
+table = endpoint_quality_table(meta, jac_stats, auroc_stats, overlap_stats, bedroc_stats)
 endpoint_summary = pathogen_endpoint_summary(table)
 
-# One directed row per (endpoint, peer) carrying both metrics, so the same-model-excluded view and
-# any per-pair follow-up can be recovered without recomputing either matrix.
+# One directed row per (endpoint, peer) carrying all four metrics, so the same-model-excluded view
+# and any per-pair follow-up can be recovered without recomputing any matrix.
 endpoint_pairs = auroc_pairs.merge(jac_pairs[["endpoint", "peer", "jaccard"]],
                                    on=["endpoint", "peer"], how="outer")
-assert len(endpoint_pairs) == len(auroc_pairs) == len(jac_pairs), (
+endpoint_pairs = endpoint_pairs.merge(overlap_pairs[["endpoint", "peer", "overlap"]],
+                                      on=["endpoint", "peer"], how="outer")
+endpoint_pairs = endpoint_pairs.merge(bedroc_pairs[["endpoint", "peer", "bedroc"]],
+                                      on=["endpoint", "peer"], how="outer")
+assert len(endpoint_pairs) == len(auroc_pairs) == len(jac_pairs) == len(overlap_pairs) \
+    == len(bedroc_pairs), (
     f"pair frames do not align: {len(jac_pairs)} Jaccard, {len(auroc_pairs)} AUROC, "
-    f"{len(endpoint_pairs)} merged — the two naming conventions disagree on some endpoint.")
+    f"{len(overlap_pairs)} overlap, {len(bedroc_pairs)} BEDROC, {len(endpoint_pairs)} merged — the "
+    "naming conventions disagree on some endpoint.")
 
 table.to_csv(os.path.join(output_dir, "09_endpoint_quality.csv"), index=False)
 endpoint_pairs.to_csv(os.path.join(output_dir, "09_endpoint_pairs.csv"), index=False)
@@ -447,5 +537,27 @@ if len(odd):
 
 print()
 save_endpoint_quality_figures(output_dir, table)
+
+# ----------------------------------------------------------------------------- #
+# 5. Pooled same-vs-cross-pathogen AUROC(top1000) distribution (2026-09-03,       #
+#    user-requested alternative to the per-endpoint specificity scatter above)   #
+# ----------------------------------------------------------------------------- #
+# Part 1's scope (15 pathogens of interest, no MIN_ENDPOINTS filter — min_endpoints=1 keeps every
+# pathogen with at least 1 column, i.e. is a no-op filter), NOT §4's 12-pathogen/255-endpoint scope:
+# this pools every directed same-/cross-pathogen AUROC pair into two distributions rather than
+# reducing each endpoint to a same/diff median first, so the two 1-endpoint pathogens (Campylobacter,
+# H. pylori) contribute to the cross-pathogen distribution even though they have no same-pathogen
+# pair of their own.
+nodes_poi, meta_poi, _ = endpoint_nodes(jaccard, pathogens_of_interest_path,
+                                        endpoint_selection_path, min_endpoints=1)
+auroc_pairs_poi = auroc_endpoint_pairs(self_perf, meta_poi)
+auroc_pairs_poi.to_csv(os.path.join(output_dir, "09_auroc_top1000_pair_distribution_pairs.csv"),
+                       index=False)
+n_same = int((auroc_pairs_poi["category"] == "same_pathogen").sum())
+n_diff = int((auroc_pairs_poi["category"] == "different_pathogen").sum())
+print(f"[endpoint-quality] AUROC pair distribution (15 pathogens of interest, {len(nodes_poi)} "
+      f"endpoints, no endpoint-count filter): {len(auroc_pairs_poi):,} directed pairs "
+      f"({n_same:,} same-pathogen, {n_diff:,} cross-pathogen)")
+save_auroc_pair_distribution_figure(output_dir, auroc_pairs_poi)
 
 print(f"\nDone → {output_dir}")
