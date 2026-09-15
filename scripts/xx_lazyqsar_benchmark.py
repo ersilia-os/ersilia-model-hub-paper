@@ -127,5 +127,27 @@ fig.legend(
     frameon=False,
 )
 
-stylia.save_figure(os.path.join(output_dir, "Figure_SX.png"))
-stylia.save_figure(os.path.join(output_dir, "Figure_SX.pdf"))
+# Panel labels: same mechanism as ersilia-ml-benchmark's merge_plot_results.py
+# (placeholders added before OUR OWN tight_layout() call, positions finalized
+# after — stylia.save_figure() below is skipped in favor of a direct
+# fig.savefig() because it runs its own bare tight_layout() internally, which
+# would reflow the figure a second time and invalidate the positions set
+# here). Unlike that script, this figure has a suptitle above the legend, so
+# "a" is placed relative to panel 0's own top edge (like "b" is for panel 1)
+# rather than reusing that script's fixed y=1.07 tuned for a legend-only header.
+label_kwargs = dict(fontsize=stylia.FONTSIZE_BIG, fontweight="bold", ha="left")
+label_a = fig.text(0.0, 1.0, "a", va="bottom", **label_kwargs)
+label_b = fig.text(0.0, 0.5, "b", va="bottom", **label_kwargs)
+fig.tight_layout(h_pad=5.6)
+fig.canvas.draw()
+label_x = min(panel_axes[0].get_position().x0, panel_axes[1].get_position().x0) - 0.03
+label_a.set_position((label_x, panel_axes[0].get_position().y1 + 0.03))
+label_b.set_position((label_x, panel_axes[1].get_position().y1 + 0.03))
+
+for ext in ("png", "pdf"):
+    fig.savefig(
+        os.path.join(output_dir, f"Figure_SX.{ext}"),
+        dpi=600,
+        transparent=False,
+        bbox_inches="tight",
+    )
