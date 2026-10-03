@@ -11,14 +11,16 @@ AIRTABLE_VIEW_ID = "viwy0inGR1xv2Tpfe"
 # The Airtable metadata is FROZEN at this snapshot. Every consumer reads the dated file named by
 # AIRTABLE_METADATA_FILE, never a generic "airtable_metadata.csv", so the analysis cannot drift
 # when the live base changes. To refresh: bump the date here and re-run 00_download_data.py, which
-# downloads the new dated file and leaves the previous one in place for comparison.
+# downloads the new dated file. Only the latest dated pull is kept on disk.
 #
 # The shared view excludes models with Status "Archived", so an archived model disappears from the
 # export entirely rather than showing up with a changed Status.
 # 2026-08-12: re-snapshotted after fixing an NA-coercion bug in 00_download_data.py that turned the
 # literal License value `None` into an empty cell. The 2026-08-07 and earlier files carry that
 # defect and must not be used to judge whether a model declares a licence.
-AIRTABLE_SNAPSHOT_DATE = "2026-08-12"
+# 2026-10-01: fresh pull (237 models) kept as the reference copy of live Airtable alongside the
+# manual file; the 2026-08-06/07/12 dated files were deleted (user-directed).
+AIRTABLE_SNAPSHOT_DATE = "2026-10-01"
 # 2026-08-14: the whole catalogue was revised BY HAND offline — descriptions and interpretations
 # rewritten, and corrections to Task/Subtask (4 models), Biomedical Area (9), Target Organism (5),
 # License (22), Publication Type (9) and Publication Year (28). The corrected export was placed at

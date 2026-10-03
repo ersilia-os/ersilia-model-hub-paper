@@ -363,6 +363,22 @@ SECTION1_SOURCES = [
 # Section 1 — Repos / eosvc
 # =============================================================================
 
+# NOTE: the eosquality reference library (~2.2 GB: Morgan FP index, 50-NN self-neighbour
+# arrays, physchem/MACCS matrices, plus the library SMILES CSV) is NOT fetched here. It
+# lands in the ~/.eosquality/ PACKAGE CACHE, not in this repo's data/ tree — the same
+# status as the ersilia models under ~/eos, which are likewise not routed through this
+# script. scripts/xx_eosquality.py fetches it on first run.
+#
+# Two things to know if that fetch ever needs to move here (user-directed, 2026-09-15):
+#   - eosquality 0.1.0 has a BROKEN default URL: library/identity.py:52 points at
+#     .../eosvc-public/eosquality/indices/, but eosvc publishes to
+#     .../eosvc-public/eosquality/data/indices/ (missing `data/` segment; every file 403s).
+#     Override it with EOSQUALITY_REFERENCE_BASE_URL — that single env var fixes both the
+#     index folder and the sibling libraries/ CSV.
+#   - the index's smiles.csv is byte-identical to the reference_library_smiles.csv fetched
+#     in Section 2 below, apart from the `input` -> `smiles` header rename. The other
+#     ~2.1 GB are eosquality-specific precalculations that exist nowhere in this repo.
+
 for source in SECTION1_SOURCES:
     print(f"\n{source['description']}...")
     if args.eosvc:

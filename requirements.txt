@@ -1,6 +1,6 @@
 eosvc==1.2.0
 isaura==2.4.1
-git+https://github.com/ersilia-os/eosframes.git@v1.0.1
+git+https://github.com/ersilia-os/eosframes.git@v1.1.0
 pandas==2.3.0
 numpy==2.5.1
 stylia==1.0.1
@@ -9,9 +9,23 @@ requests==2.32.5
 circlify==0.15.1
 scikit-learn==1.8.0
 scipy==1.17.1
+pyarrow==25.0.1
+# FPSim2: fingerprint similarity search, used by xx_chembl_models_reflib.py / xx_chembl_models_drugbank.py
+FPSim2==0.7.4
 # Explicit exception to the "stylia only" plotting rule (CLAUDE.md), scoped to step 15's chord
 # diagrams only — matplotlib has no chord-diagram primitive, and pycirclize draws proper circos
 # ribbons (wide at the rim, pinched at the centre) via real sector-based arc allocation, which a
 # hand-rolled Bezier stroke cannot. Pulls in biopython transitively (pycirclize's own genomic-track
 # features, unused here) — unavoidable, not a direct choice.
 pycirclize==1.10.1
+
+# eosquality: prediction-quality scoring for Ersilia model outputs, used by
+# xx_eosquality.py. Work in progress and unreleased — pinned to a git ref, not a version.
+git+https://github.com/ersilia-os/eosquality.git@d63ec34
+# rdkit pinned to EXACTLY the version the published eosquality reference-library index was
+# built with (see its metadata.json). eosquality's VectorIndex._check_rdkit_version
+# (vectorindex.py:363-377) compares the two with a strict string `!=` and raises
+# RuntimeError on ANY difference, so 2026.3.2+ cannot load the canonical index at all.
+# This pin binds the whole `paper` env (eosquality is installed there alongside the rest of
+# the project); before it, rdkit arrived transitively via eosframes/isaura with no pin.
+rdkit==2026.3.1

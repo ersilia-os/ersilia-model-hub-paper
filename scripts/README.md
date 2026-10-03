@@ -115,6 +115,17 @@ Projection), `eos5g6m` (glacier-embeddings), `eos5mnx` (sand-shape-descriptor), 
 `eos1lb5` went to *In maintenance*. Ready-only Task counts: Annotation 131 → 130, Representation
 58 → 61, Sampling 19 → 23.
 
+### Fresh Airtable pull 2026-10-01 — 237 models; manual file still in use
+
+`data/raw/airtable_metadata_20261001.csv` was pulled as the current reference copy of live Airtable,
+and `AIRTABLE_SNAPSHOT_DATE` bumped to `2026-10-01`. **`AIRTABLE_METADATA_FILE` stays pinned to
+`airtable_metadata_manual.csv`** — no analysis input changed. A sync check against the live base
+showed the structured corrections (License, Publication*, Task/Subtask, Biomedical Area, Target
+Organism, Title, Source Code) **are** in Airtable, but the rewritten Description (208 models) and
+Interpretation (209) and 3 Output Consistency changes (`eos1d7r`, `eos3kcw`, `eos9ueu` → `Fixed`)
+**are not**. The older dated files (`20260806`, `20260807`, `20260812`) were deleted (user-directed),
+so the 2026-08-12 baseline the manual file was edited from no longer exists on disk.
+
 ### Metadata HAND-REVISED 2026-08-14 — 218 models, 218 Ready
 
 **The catalogue was revised by hand offline and the revisions are NOT yet in Airtable.** The corrected
@@ -2720,3 +2731,71 @@ construction. The legend's vertical position is measured (`Text.get_window_exten
 sit just below the lowest rendered endpoint label — chord labels radiate outward by varying amounts
 depending on rotation, so a fixed axes-fraction offset (the matrix figure's approach) either
 overlapped the bottom labels or left an oversized gap.
+
+## xx_eosquality.py
+Scores an Ersilia pathogen model's predictions with [`eosquality`](https://github.com/ersilia-os/eosquality),
+which quantifies how *trustworthy* a run output looks — explicitly **not** the probability
+that a prediction is correct. Two stages: `fit` builds a reference population from the
+model's own predictions on the full Ersilia reference library, then `run` scores an
+arbitrary query set against it. First applied to E. coli / `eos5eya` (2026-09-15).
+
+**Full-library fit, no subsampling — forced by the package, not chosen.** `eosquality`
+requires `len(reference) == len(index)` exactly (`quality.py:204-209`) *and* that the
+reference SMILES match the canonical library row-for-row (`quality.py:914-938`). The
+Isaura predictions already staged at `data/processed/annotation_preds_ref_library/{eosid}_v*.csv`
+satisfy both as-is, so they are passed to `fit` directly, uncopied and unmodified.
+
+**Four scores, not five:** `typicality`, `extremity`, `support`, `consistency`. The fifth,
+`signal`, is excluded (user-directed, 2026-09-15) — it is opt-in upstream, self-labelled
+provisional (`SIGNAL_FORMULA_VERSION = "gini_v2"`), not exported from `eosquality`'s
+`__init__.py`, and defaults to only 1,000 XGBoost training rows.
+
+**`--max-features` left at eosquality's default of 10** (user-directed, 2026-09-15). This
+is the #1 open TODO in eosquality's own README, and it means any model with more than 10
+numeric columns has the rest dropped by correlation-cluster medoid reduction — for
+`eos5eya`, 3 of 13. The script names the dropped columns on every run so the choice stays
+reviewable. `consensus_score` is likewise kept in the fit, despite being a derived
+aggregate of the other 12 endpoints.
+
+**Two query sets**, both reusing predictions already on disk, no new inference:
+- `random10000` — an **in-sample** random draw (seeded with `RANDOM_SEED`), not a held-out
+  set, because the fit necessarily covers the whole library. It is the null control: every
+  calibrated score is a CDF lookup against the reference's own distribution, so a random
+  draw from that same reference must centre near **0.5 by construction**. If it does not,
+  the fit is wrong and the top-1000 numbers should not be read.
+- `top1000` — the pathogen's 1,000 top-ranked compounds from
+  `output/11_reference_library_projection/11_top1000_per_pathogen.csv`, joined back on `key`.
+
+**Two upstream bugs in eosquality 0.1.0 are worked around, neither by patching it:**
+1. `library/identity.py:52` hardcodes the S3 prefix `.../eosvc-public/eosquality/indices/`,
+   but eosvc publishes to `.../eosvc-public/eosquality/data/indices/` — the `data/` segment
+   is missing and every file 403s. Fixed by setting `EOSQUALITY_REFERENCE_BASE_URL`, which
+   corrects both the index folder and the sibling `libraries/` CSV.
+2. `VectorIndex._check_rdkit_version` (`vectorindex.py:363-377`) compares the running RDKit
+   against the index's build version with a strict string `!=`. The published index is
+   pinned to RDKit **2026.03.1**, hence the `rdkit==2026.3.1` pin in `requirements.txt`.
+   The script checks this up front rather than letting `fit` die inside a subprocess.
+
+**Cross-pathogen table.** `output/xx_eosquality/xx_all_pathogens_summary.csv` is merged
+incrementally — re-running one pathogen replaces only its own rows — so the 15 can be run
+one at a time, using `src/chembl_models_analyses_common.py`'s `merge_into_combined_summary`.
+
+All 15 models ran clean (2026-09-15, ~150 s each): every control median within **0.017** of
+0.50, zero NaNs. Note `support` is identical (0.497) across all 15 controls by construction —
+it reads only fingerprint space, never model outputs, and the seeded control draws the same
+molecules each time.
+
+**Figure 3 panel** (`xx_eosquality_pathogen_quality`, 3 × 6 cells, drawn by `src/plots_eosquality.py`).
+One file, four score columns (typicality, extremity, support, consistency), 15 pathogen rows in the
+step 10 / 12 phylogenetic order (`pathogen_phylo_order`). Each row pairs the top-1000 box (crimson)
+with the random-control box (silver). Only the calibrated scores are shown, never the `_raw` ones.
+Boxes come from the summary CSV's quartiles, and **whiskers span min–max** because the summary
+holds no per-compound values to compute 1.5 × IQR whiskers. The dashed line is the 0.5 null.
+Typicality ≈ 0 and extremity ≈ 1 on every top-1000 set **by construction**: the selection is made on
+extreme outputs. They are shown anyway (user-directed, 2026-10-01). The panel is drawn automatically
+once the summary covers all 15 pathogens; `--plot-only` redraws it without re-scoring.
+
+The ~2.2 GB reference library is fetched into the `~/.eosquality/` **package cache**, not
+into `data/` — the same status as the ersilia models under `~/eos`, and the reason this is
+not routed through `00_download_data.py`. See the `NOTE:` in Section 1 of that script.
+**Run this script in the `paper` conda env** (which includes eosquality).
