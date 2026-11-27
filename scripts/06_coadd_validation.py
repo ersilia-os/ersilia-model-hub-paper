@@ -1,7 +1,7 @@
 """Step 06 — CoAdd validation of the public ChEMBL pathogen models.
 
 Mirror of step 05 (EU OpenScreen) on the CoAdd dataset: the same step-04 predictions
-(``output/04_ersilia_predictions/coadd/{eosid}.csv``, headline column ``consensus_score``) are
+(``output/04_ersilia_predictions/coadd/{eosid}_{vMajor}.csv``, headline column ``consensus_score``) are
 scored against CoAdd growth-inhibition / MIC labels. This first version stays narrow — only the
 organisms that have both a ChEMBL model and a CoAdd reference strain, scored on that reference
 strain at the two headline cutoffs:

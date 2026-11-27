@@ -22,6 +22,7 @@ Requires
     data/raw/chembl_model_reports/{pathogen}/{name}_folds.json
     data/raw/chembl_model_reports/10_reports/10_reports.csv
     data/raw/chembl_model_reports/10_reports/10_discarded_models.csv
+    data/raw/chembl_model_reports/09c_scaffold_vs_random/09c_delta_auroc.csv
 
 Outputs
 -------
@@ -157,9 +158,19 @@ discard_reasons = {
     ).iterrows()
 }
 
-# "10_reports" is the aggregated-summary subdir staged by 00_download_data.py,
-# not a pathogen — exclude it from the per-pathogen iteration.
-NON_PATHOGEN_DIRS = {"10_reports"}
+# Scaffold-split CV AUROC per model (companion repo step 09c), keyed like the step-10 tables.
+# Only the per-model means are published, so the scaffold view is limited to the consensus panel.
+scaffold_dir = os.path.join(reports_dir, "09c_scaffold_vs_random")
+scaffold_auroc = {
+    (r["pathogen"], r["name"]): r["auroc_scaffold_mean"]
+    for _, r in pd.read_csv(
+        os.path.join(scaffold_dir, "09c_delta_auroc.csv"), dtype={"name": str}
+    ).iterrows()
+}
+
+# "10_reports" and "09c_scaffold_vs_random" are aggregated-summary subdirs staged by
+# 00_download_data.py, not pathogens — exclude them from the per-pathogen iteration.
+NON_PATHOGEN_DIRS = {"10_reports", "09c_scaffold_vs_random"}
 pathogens = sorted(
     d for d in os.listdir(reports_dir)
     if os.path.isdir(os.path.join(reports_dir, d)) and d not in NON_PATHOGEN_DIRS
@@ -183,6 +194,7 @@ else:
 footprints = {}
 plotted_keys = set()
 consensus_entries = []  # per-pathogen retained CV AUROCs for the condensed summary figure
+scaffold_entries = []   # same models, scaffold-split CV AUROCs
 
 for pathogen in pathogens:
     pathogen_dir = os.path.join(reports_dir, pathogen)
@@ -200,6 +212,7 @@ for pathogen in pathogens:
     summary_df = pd.DataFrame([
         {"model": m["name"], "mean_auroc": round(m["mean_auroc"], 4),
          "std_auroc": round(m["std_auroc"], 4),
+         "scaffold_mean_auroc": scaffold_auroc.get((pathogen, m["stem"]), np.nan),
          "retained": (pathogen, m["stem"]) in retained_keys,
          "discard_reason": discard_reasons.get((pathogen, m["stem"]), "")}
         for m in models
@@ -217,6 +230,13 @@ for pathogen in pathogens:
         "aurocs": summary_df.loc[summary_df["retained"], "mean_auroc"].tolist(),
         "n_molecules": mol_counts.get(pathogen),
     })
+    retained = summary_df[summary_df["retained"]]
+    n_no_scaffold = int(retained["scaffold_mean_auroc"].isna().sum())
+    if n_no_scaffold:
+        print(f"  [WARN] {n_no_scaffold} retained models have no scaffold-split AUROC "
+              "(left out of the scaffold panel, not imputed)")
+    scaffold_entries.append({**consensus_entries[-1],
+                             "aurocs": retained["scaffold_mean_auroc"].dropna().tolist()})
 
     # ROC grid + rank boxplots, both as PNG + vector PDF on the 3 cm cell grid
     figs = save_performance_figures(pathogen, models, individual_dir, pathogen_names)
@@ -248,7 +268,7 @@ datasets.sort_values(["pathogen", "size"], ascending=[True, False]).to_csv(
 
 top_fp = {}
 top_fp.update(save_activity_ratios_figure(datasets, output_dir, pathogen_names))
-top_fp.update(save_consensus_figure(consensus_entries, output_dir))
+top_fp.update(save_consensus_figure(consensus_entries, output_dir, scaffold_entries))
 if top_fp:
     write_figure_cells(top_fp, output_dir)
     for name, cells in top_fp.items():

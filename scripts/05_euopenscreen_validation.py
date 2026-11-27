@@ -1,7 +1,7 @@
 """Step 05 — EU OpenScreen validation of the ChEMBL pathogen models.
 
 Evaluates how well our step-04 Ersilia model predictions
-(``output/04_ersilia_predictions/euopenscreen/{eosid}.csv``, headline column ``consensus_score``)
+(``output/04_ersilia_predictions/euopenscreen/{eosid}_{vMajor}.csv``, headline column ``consensus_score``)
 rank the actives in the EU OpenScreen screening library — compounds the models never saw in
 training. Analyses:
 
@@ -37,6 +37,11 @@ training. Analyses:
     assay and an eos3dys endpoint (efaecium has no eos3dys endpoint): CoAdd-training overlap with
     the EU OpenScreen library and its actives, and exclusive-vs-shared hit AUROC per endpoint.
     Labels are always EU OpenScreen; CoAdd is only the dedup source.
+
+Enterococcus: EU OpenScreen assay EOS300080 tests E. faecalis ATCC 29212, but it is scored with
+our only Enterococcus model, the E. faecium ChEMBL model eos81zy. Every step-05 output labels that
+row "Enterococcus faecalis*" (EUOS_PATHOGEN_LABEL in src/default.py), and any figure that shows it
+needs the caption note in EUOS_LABEL_FOOTNOTE, which is printed at the end of each run.
 
 Every metric (AUROC, AUPRC, BEDROC, EF@1%, EF@5%) is reported both ``raw`` and InChIKey-
 ``dedup`` (leakage-filtered against the ChEMBL training sets; for eos3dys, against its own CoAdd
@@ -105,6 +110,7 @@ import sys
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root, "..", "src"))
 
+from default import EUOS_LABEL_FOOTNOTE  # noqa: E402
 from eval_euopenscreen import run_all  # noqa: E402
 from plots_euopenscreen import (  # noqa: E402
     save_euopenscreen_figures,
@@ -142,3 +148,5 @@ run_eos3dys_all(pred_dir, euos_root, coadd_root, config_path, eos3dys_dir)
 save_eos3dys_figures(eos3dys_dir)
 
 print(f"\nDone → {output_dir}")
+
+print(f"\nCaption note for Enterococcus rows: {EUOS_LABEL_FOOTNOTE}")

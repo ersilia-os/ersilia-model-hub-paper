@@ -115,6 +115,67 @@ Projection), `eos5g6m` (glacier-embeddings), `eos5mnx` (sand-shape-descriptor), 
 `eos1lb5` went to *In maintenance*. Ready-only Task counts: Annotation 131 → 130, Representation
 58 → 61, Sampling 19 → 23.
 
+### TODO — add the new annotation models to the endpoint selection (open since 2026-11-09)
+
+Eight annotation models reached the catalogue after `config/08_endpoint_selection.csv` was curated
+and have **no Isaura predictions yet**, so they are not in the selection. Once their predictions are
+available, fetch them with `00_download_data.py` and add their columns to the selection:
+
+- **Pathogen-relevant (candidates for `selected = Yes`):** `eos7s53` (mtbaim, *M. tuberculosis*),
+  `eos8bpb` (ecoli-permeation-efflux, *E. coli*).
+- **Not organism-specific** (target organism "Any" or human; like the 76 older models the selection
+  leaves out, likely `selected = No` but still to be listed): `eos531m` (hlm-half-life), `eos7eos`,
+  `eos2srx`, `eos3wzy` (qupkake), `eos3xhm`, `eos48ue`.
+
+Also re-check the 17 models still on an old-version prediction file (next entry) and update the
+selection's column names if their new version renames outputs, as eos3dys v2 did. Then re-run steps
+07–15.
+
+### Isaura predictions refreshed 2026-11-09 — 17 models still on an old version
+
+Against the 2026-11-09 snapshot (140 Ready annotation models), 19 new-version prediction files were
+fetched. All cover the full reference library (1,355,109 compounds). 18 old-version files with a
+complete replacement were deleted (user-directed), including all 15 pathogen models and eos3dys.
+**Not available in Isaura yet** (no stored predictions for the new version): 25 models. For 17 of
+them the old-version file is KEPT and is what downstream steps will see until Isaura catches up:
+eos19mt v2 (needs v3), eos1lb5 v2 (v3), eos1soi v1 (v2), eos21q7 v2 (v3), eos238c v2 (v3),
+eos2zmb v1 (v2), eos3lyd v1 (v2), eos4cxk v1 (v2), eos4r1g v1 (v2), eos4xb1 v1 (v2), eos5bsw v1 (v2),
+eos5cl7 v3 (v4), eos5jv3 v1 (v2), eos6tpo v3 (v4), eos7l5m v1 (v2), eos8a5g v1 (v2),
+eos9f7c v1 (v2). The other 8 are new to the catalogue and have no file at all: eos8bpb, eos7s53,
+eos531m, eos7eos, eos2srx, eos3xhm, eos48ue, eos3wzy. `eos2gth_v1` and `eos7d58_v1` were
+also deleted: both models are archived, so they are no longer in the Airtable view.
+The `eos2gth` row (`maip_score`, *P. falciparum*) was removed from `config/08_endpoint_selection.csv`;
+P. falciparum is covered by the released MAIP model, eos4zfy (v2, already selected).
+
+**Steps 07–15 are on hold until Isaura has these new versions (user decision, 2026-11-10).** The
+code picks the highest version on disk without warning, so running now would use eos1soi v1 and
+eos5cl7 v3 (both selected endpoints) and eos19mt v2 (step 12's enrichment model). Full list, grouped
+by how each model is used: `docs/2026-11-10_isaura_missing_latest_versions.md`. Checked 2026-11-10:
+every column in the four selection configs exists in the files on disk. When the new files arrive,
+re-run that check, move the September `output/07_…`–`output/15_…` folders aside (every output is
+skip-if-exists, including the 07 and 08 parquet caches), then run 07 → 15 in order.
+
+### EU OpenScreen Enterococcus relabel 2026-11-09 — E. faecalis assay, E. faecium model
+
+Upstream (`eu-openscreen-antimicrobial-tasks`) corrected assay EOS300080 from `efaecium` to
+`efaecalis`: it tests *E. faecalis* ATCC 29212. Our only Enterococcus model is the *E. faecium* ChEMBL
+model eos81zy. **Decision (user):** keep the pairing and label it honestly. Our code stays
+`efaecium` everywhere (CoAdd strain ATCC 51559 and eos81zy really are *E. faecium*). Only the
+EU OpenScreen file names are translated (`EUOS_ASSAY_CODE`), and step-05 outputs label the row
+**"E. faecalis\*"** (`EUOS_PATHOGEN_LABEL`). The figure captions must carry `EUOS_LABEL_FOOTNOTE`.
+The data are unchanged: the renamed upstream files are identical to the old `efaecium` ones.
+
+### Airtable snapshot 2026-11-09 — manual file retired, In maintenance counted as Ready
+
+`AIRTABLE_SNAPSHOT_DATE` bumped by hand to `2026-11-09`, and `AIRTABLE_METADATA_FILE` is derived
+from the date again: every script now reads `data/raw/airtable_metadata_20261109.csv` (247 models)
+through `src/airtable_utils.load_airtable_metadata()`. The hand-revised `airtable_metadata_manual.csv`
+was renamed `airtable_metadata_20260815.csv` and kept as history; its revisions have been synced to
+Airtable (confirmed by the user). **Status remap:** models whose Status is *In maintenance* are
+counted as *Ready* on load (`AIRTABLE_STATUS_REMAP` in `src/default.py`), because they are being
+fixed as part of this work. The raw file keeps Airtable's value. On this snapshot that is 5 models
+(eos2401, eos43d6, eos4rta, eos4se9, eos5nqn), giving 243 Ready.
+
 ### Fresh Airtable pull 2026-10-01 — 237 models; manual file still in use
 
 `data/raw/airtable_metadata_20261001.csv` was pulled as the current reference copy of live Airtable,
@@ -624,6 +685,17 @@ and max marker so small datasets stay visible. **No size key fits at this footpr
 encoding is decorative. The two-entry colour key sits inside the axes, upper left: rows run
 worst-to-best upward so the top rows' marks are pushed right, leaving that corner the one region the
 data does not reach. Dashed line = the step-10 retention floor (mean AUROC 0.7).
+**Scaffold-split twin** (`pathogen_consensus_auroc_scaffold`, added 2026-11-09): the same figure for the
+same 193 retained models, using each model's **scaffold-grouped** 5-fold CV AUROC from the companion
+repo's step 09c (`09c_scaffold_vs_random/09c_delta_auroc.csv`, staged with the reports). It keeps the
+random panel's row order so the two read side by side. Only per-model means are published for the
+scaffold split, so there are no scaffold ROC curves or rank boxplots. Per-pathogen mean drop from random to
+scaffold: 0.010 (*S. mansoni*) to 0.171 (*Campylobacter*, one model). Under the scaffold split 5 retained
+models fall below the 0.7 floor (retention was decided on the random split, so they stay). The
+per-pathogen summary CSVs carry the value as `scaffold_mean_auroc`.
+**Both panels' x axis now runs 0.5–1.0** (was 0.68–1.0): 3 retained models score below 0.68 under the
+scaffold split (lowest *M. tuberculosis* SP_0005, 0.515), and a shared axis keeps the shift readable.
+The x-axis labels now name the split (`random-split CV AUROC`, `scaffold-split CV AUROC`).
 **This is a summary of per-model CV AUROCs, not a per-compound consensus prediction** — the CV pools
 share no held-out set, so a true ensemble AUROC is not computable here.
 **Scope: step 09, not step 10.** The staged per-pathogen folders are the pipeline's `09_reports`
@@ -650,12 +722,21 @@ chance-level curve white and invisible.
 
 ## 04_ersilia_predictions.sh
 First live **Ersilia CLI** step (all earlier predictions came from the Isaura precalc cache). Runs
-`ersilia fetch → serve → run → close` per model, writing one bare `{eosid}.csv` per model per library
-to `output/04_ersilia_predictions/{euopenscreen,coadd}/` (consolidated inputs in `inputs/`).
-**Library-major ordering:** all EU OpenScreen predictions (every model) run first, then all CoAdd —
-EU OpenScreen has priority. Idempotent (skip-if-exists), with an append-only `_failures.log`.
-**Models (16):** the 15 in `config/pathogens_of_interest.csv` plus the CoAdd model `eos3dys`; every
-model predicts both libraries.
+`ersilia fetch → serve → run (both libraries) → close → delete` per model, writing
+`{eosid}_{vMajor}.csv` per model per library to `output/04_ersilia_predictions/{euopenscreen,coadd}/`
+(consolidated inputs in `inputs/`).
+**Model-major ordering (2026-11-09, was library-major):** each model is fetched once, runs EU OpenScreen
+then CoAdd, and is deleted before the next one is fetched, so only one image (~5–11 GB) is on disk at a
+time instead of ~133 GB for all 16.
+**Versioned outputs (2026-11-09):** the file name carries the major version of the model that was
+actually fetched (its card's `Release`), which must match the Airtable snapshot's major version — the
+one steps 05–06 look up through `eval_common.prediction_file`. A mismatch fails that model rather than
+writing a file nothing would read. Full release, Docker image digest, row count and date go to the
+append-only `_versions.tsv`; failures to `_failures.log`. Idempotent (skip-if-exists); predictions are
+written to `_partial/` and moved into place only on success.
+**Models:** the 15 in `config/pathogens_of_interest.csv` plus the CoAdd model `eos3dys`, **minus
+`EXCLUDE` (default `eos43d6`, *M. tuberculosis*)**: it is *In maintenance* in Airtable and is held back
+until checked by hand (user decision 2026-11-09); `EXCLUDE=""` runs it.
 **Libraries:** EU OpenScreen reuses `data/raw/euopenscreen_data/02_merged/02_only_smiles.csv`
 (106,290 compounds); CoAdd uses the `std_smiles` column of `data/raw/coadd_data/00_smiles_info.csv`,
 dropping 199 rows with empty `std_smiles` (failed upstream standardization) and deduplicating →
@@ -663,7 +744,9 @@ dropping 199 rows with empty `std_smiles` (failed upstream standardization) and 
 fed an empty row.
 **Environment:** requires `ersilia` in a conda env (`ERSILIA_ENV`, default `ersilia`; deliberately
 not a `requirements.txt` dependency).
-**Compute:** ~16 × ~206k predictions — an overnight job. `SMOKE=1` runs one model over
+**Compute:** ~16 × ~206k predictions — **several days, not overnight**. In the July 2026 run most models
+took ~2–6 h per library, but eos4an7 (*P. falciparum*) took ~55 h on CoAdd alone. Launch with
+`caffeinate -i` so the Mac does not sleep. `SMOKE=1` runs one model over
 ~1,500-compound subsets for a fast end-to-end check.
 
 ## 05_euopenscreen_validation.py

@@ -3,9 +3,10 @@
 Run this script once before running any other analysis scripts.
 Organised in four sections matching the data source type.
 
-Section 1 – Repos / eosvc
-    Data from companion git repos (expected cloned at the same level as this repo)
-    or from this repo's eosvc-tracked storage. Add new sources to SECTION1_SOURCES.
+Section 1 – Companion repos (via their eosvc)
+    Published data of companion repos, downloaded from their eosvc storage in the public
+    `eosvc-public` S3 bucket. Sibling clones are never read or written. Add new sources to
+    SECTION1_SOURCES.
 
 Section 2 – GitHub
     Raw files fetched directly from public GitHub URLs.
@@ -19,8 +20,12 @@ Section 4 – Isaura
 
 Usage
 -----
-    python 00_download_data.py            # copy Section 1 data from companion repos
-    python 00_download_data.py --eosvc    # pull Section 1 data from eosvc instead
+    python 00_download_data.py                 # all four sections
+    python 00_download_data.py --skip-isaura   # Sections 1-3 only (much faster)
+
+Every section is skip-if-exists. To re-stage something after an upstream update, delete the local
+file(s) and re-run. This repo's own eosvc storage is not used here: pull or push it with the
+`eosvc` CLI directly.
 
 Outputs
 -------
@@ -39,7 +44,7 @@ Outputs
     data/raw/compound_lists/reference_library_smiles.csv
     data/raw/compound_lists/drugbank_smiles.csv
     data/raw/lazyqsar_benchmark/all_results.csv
-    data/raw/airtable_metadata_{AIRTABLE_SNAPSHOT_DATE}.csv   (frozen snapshot, see src/default.py)
+    data/raw/airtable_metadata_{YYYYMMDD}.csv   (frozen snapshot, date set in src/default.py)
     data/processed/annotation_preds_ref_library/{model_id}_{version}.csv
     data/processed/annotation_preds_ref_library/eos4djh_v1.csv
     data/processed/eos1klk_projection/eos1klk_v1.csv
@@ -50,9 +55,9 @@ import io
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
+import xml.etree.ElementTree as ET
+from urllib.parse import quote
 
 import pandas as pd
 import requests
@@ -68,20 +73,17 @@ from default import (
     AIRTABLE_SNAPSHOT_DATE,
     AIRTABLE_VIEW_ID,
     DRUGBANK_URL,
+    EOSVC_PUBLIC_URL,
     PHYSCHEM_MODEL_ID,
     PROJECTION_MODEL_ID,
     PROJECTION_PREDS_SUBDIR,
     REFERENCE_LIBRARY_URL,
 )
+from airtable_utils import load_airtable_metadata
 from isaura_utils import download_from_isaura
 
 parser = argparse.ArgumentParser(
     description="Download and stage all input data for the analysis pipeline."
-)
-parser.add_argument(
-    "--eosvc",
-    action="store_true",
-    help="Pull Section 1 data from eosvc storage instead of companion repos.",
 )
 parser.add_argument(
     "--skip-isaura",
@@ -102,68 +104,86 @@ os.makedirs(projection_dir, exist_ok=True)
 # =============================================================================
 # Section 1 helpers
 # =============================================================================
+# Companion-repo data is read ONLY from each repo's published eosvc storage in the public
+# `eosvc-public` S3 bucket, over plain HTTPS (no credentials, no sibling clone needed). Sibling
+# working copies are never read and never written: what is staged here is always the published
+# version. Objects live at {EOSVC_PUBLIC_URL}/{repo}/{path-within-repo}.
 
-def _copy_files(src_path, dst_dir, include_fn=None, rename_fn=None, label_prefix=""):
-    """Copy matching files from src_path into dst_dir with skip-if-exists."""
-    os.makedirs(dst_dir, exist_ok=True)
-    for fname in sorted(os.listdir(src_path)):
-        if not os.path.isfile(os.path.join(src_path, fname)):
-            continue
-        if include_fn and not include_fn(fname):
-            continue
-        out_name = rename_fn(fname) if rename_fn else fname
-        out_path = os.path.join(dst_dir, out_name)
-        if os.path.exists(out_path):
-            print(f"  Already exists: {label_prefix}{out_name}")
-            continue
-        shutil.copy2(os.path.join(src_path, fname), out_path)
-        print(f"  -> {out_path}")
+_S3_NS = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
 
 
-def copy_from_repo(repo_name, src_dir, dst_dir, include_fn=None, rename_fn=None, recursive=False):
-    """Copy matching files from a sibling repo directory into a local directory.
+def list_eosvc_files(repo, src_dir, recursive=False):
+    """List published files under a companion repo folder in the public eosvc bucket.
 
-    If recursive=True, iterates over immediate subdirectories of src_dir and
-    copies their contents into matching subdirectories under dst_dir.
+    Parameters
+    ----------
+    repo : str
+        Companion repo name, which is also its top-level prefix in the bucket.
+    src_dir : str
+        Folder within the companion repo, e.g. ``output/10_reports``.
+    recursive : bool
+        If False, return only files directly in ``src_dir``. If True, return only files one
+        subfolder down (``{subdir}/{file}``), mirroring the per-pathogen folder layout.
+
+    Returns
+    -------
+    list of str
+        Paths relative to ``src_dir``, sorted.
     """
-    repo_path = os.path.join(repo_root, "..", repo_name)
-    if not os.path.isdir(repo_path):
-        print(
-            f"  [SKIP] {repo_name} not found at {repo_path}\n"
-            f"         Clone: git clone https://github.com/ersilia-os/{repo_name}\n"
-            f"         Or use: python 00_download_data.py --eosvc"
-        )
-        return
-    src_path = os.path.join(repo_path, src_dir)
-    if not os.path.isdir(src_path):
-        print(
-            f"  [SKIP] {src_dir} not found in {repo_name} at {src_path}\n"
-            f"         Source not published yet — keeping any existing cached copy."
-        )
-        return
-    if recursive:
-        for subdir in sorted(os.listdir(src_path)):
-            if not os.path.isdir(os.path.join(src_path, subdir)):
-                continue
-            _copy_files(
-                src_path=os.path.join(src_path, subdir),
-                dst_dir=os.path.join(dst_dir, subdir),
-                include_fn=include_fn,
-                rename_fn=rename_fn,
-                label_prefix=f"{subdir}/",
-            )
-    else:
-        _copy_files(src_path, dst_dir, include_fn, rename_fn)
+    prefix = f"{repo}/{src_dir.strip('/')}/"
+    params = {"list-type": "2", "prefix": prefix}
+    if not recursive:
+        params["delimiter"] = "/"
+    rel_paths = []
+    while True:
+        resp = requests.get(f"{EOSVC_PUBLIC_URL}/", params=params, timeout=60)
+        resp.raise_for_status()
+        tree = ET.fromstring(resp.content)
+        for key in tree.iterfind("s3:Contents/s3:Key", _S3_NS):
+            rel = key.text[len(prefix):]
+            depth = rel.count("/")
+            if rel and not rel.endswith("/") and depth == (1 if recursive else 0):
+                rel_paths.append(rel)
+        token = tree.find("s3:NextContinuationToken", _S3_NS)
+        if token is None:
+            break
+        params["continuation-token"] = token.text
+    return sorted(rel_paths)
 
 
-def download_from_eosvc(eosvc_path, dst_dir):
-    """Pull a path from this repo's eosvc storage."""
-    os.makedirs(dst_dir, exist_ok=True)
-    subprocess.run(
-        ["eosvc", "download", "--path", eosvc_path],
-        cwd=repo_root,
-        check=True,
-    )
+def fetch_from_eosvc(repo, src_dir, dst_dir, include_fn=None, rename_fn=None, recursive=False):
+    """Download a companion repo's published files into dst_dir, skipping files already present.
+
+    To re-stage a file (e.g. after an upstream update), delete the local copy and re-run.
+    Files are written to a temporary name first, so an interrupted download never leaves a
+    truncated file that a later run would mistake for a complete one.
+    """
+    rel_paths = list_eosvc_files(repo, src_dir, recursive=recursive)
+    if include_fn:
+        rel_paths = [r for r in rel_paths if include_fn(os.path.basename(r))]
+    base_url = f"{EOSVC_PUBLIC_URL}/{repo}/{src_dir.strip('/')}"
+    print(f"  Source: {base_url}/")
+    if not rel_paths:
+        print("  [SKIP] No matching files published in eosvc — keeping any existing local copy.")
+        return
+    n_existing = 0
+    for rel in rel_paths:
+        subdir, fname = os.path.split(rel)
+        out_name = rename_fn(fname) if rename_fn else fname
+        out_path = os.path.join(dst_dir, subdir, out_name)
+        if os.path.exists(out_path):
+            n_existing += 1
+            continue
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        resp = requests.get(f"{base_url}/{quote(rel)}", stream=True, timeout=120)
+        resp.raise_for_status()
+        tmp_path = out_path + ".part"
+        with open(tmp_path, "wb") as f:
+            f.writelines(resp.iter_content(chunk_size=1 << 20))
+        os.replace(tmp_path, out_path)
+        print(f"  -> {os.path.relpath(out_path, repo_root)}")
+    print(f"  {len(rel_paths) - n_existing} downloaded, {n_existing} already present "
+          f"(of {len(rel_paths)} published).")
 
 
 # =============================================================================
@@ -171,13 +191,12 @@ def download_from_eosvc(eosvc_path, dst_dir):
 # =============================================================================
 # Each entry describes one dataset. To add a new source, append a dict with:
 #   description : human-readable label printed during download
-#   repo        : companion repo name (cloned at the same level as this repo)
-#   src_dir     : path within the companion repo to copy from
+#   repo        : companion repo name (its prefix in the public eosvc bucket)
+#   src_dir     : path within the companion repo to download from
 #   dst_dir     : local destination directory (absolute path)
-#   eosvc_path  : path passed to `eosvc download --path` when --eosvc is used
-#   recursive   : (optional) if True, copies per-subdirectory instead of flat
-#   include     : (optional) callable(filename) → bool, filters which files to copy
-#   rename      : (optional) callable(filename) → str, renames files on copy
+#   recursive   : (optional) if True, downloads per-subdirectory instead of flat
+#   include     : (optional) callable(filename) → bool, filters which files to download
+#   rename      : (optional) callable(filename) → str, renames files on download
 #
 # NOTE: EU OpenScreen H5 prediction files are currently placed manually in
 # config/eu-openscreen_preds_h5/. When published in a companion repo or
@@ -207,7 +226,6 @@ SECTION1_SOURCES = [
         "repo": "eu-openscreen-antimicrobial-tasks",
         "src_dir": "data/processed/02_merged",
         "dst_dir": os.path.join(raw_dir, "euopenscreen_data", "02_merged"),
-        "eosvc_path": "data/raw/euopenscreen_data/02_merged",
     },
     # NOTE: these per-assay files are MEASUREMENT-level — one row per assay well, so a structure the
     # library registered as two separate compounds appears as two rows with the same SMILES. Upstream
@@ -243,14 +261,12 @@ SECTION1_SOURCES = [
         "repo": "eu-openscreen-antimicrobial-tasks",
         "src_dir": "data/processed/02_binarised_assays",
         "dst_dir": os.path.join(raw_dir, "euopenscreen_data", "02_binarised_assays"),
-        "eosvc_path": "data/raw/euopenscreen_data/02_binarised_assays",
     },
     {
         "description": "EU OpenScreen primary assays manual annotation",
         "repo": "eu-openscreen-antimicrobial-tasks",
         "src_dir": "data/config",
         "dst_dir": os.path.join(raw_dir, "euopenscreen_data"),
-        "eosvc_path": "data/raw/euopenscreen_data",
         "include": lambda f: f == "primary_assays_manual.csv",
     },
     # NOTE: only the `exclusivity/` subtree (112 KB) is read by any code — `_load_exclusivity_task` in
@@ -267,7 +283,6 @@ SECTION1_SOURCES = [
         "repo": "eu-openscreen-antimicrobial-tasks",
         "src_dir": "output/06_subset_data",
         "dst_dir": os.path.join(raw_dir, "euopenscreen_data", "06_subset_data"),
-        "eosvc_path": "data/raw/euopenscreen_data/06_subset_data",
         "recursive": True,
     },
     {
@@ -275,7 +290,6 @@ SECTION1_SOURCES = [
         "repo": "chembl-antimicrobial-models",
         "src_dir": "output/09_reports",
         "dst_dir": os.path.join(raw_dir, "chembl_model_reports"),
-        "eosvc_path": "data/raw/chembl_model_reports",
         "recursive": True,
     },
     {
@@ -283,7 +297,6 @@ SECTION1_SOURCES = [
         "repo": "chembl-antimicrobial-models",
         "src_dir": "output/10_reports",
         "dst_dir": os.path.join(raw_dir, "chembl_model_reports", "10_reports"),
-        "eosvc_path": "data/raw/chembl_model_reports/10_reports",
         "include": lambda f: f.endswith(".csv"),  # top-level CSVs only; skips plots/
     },
     {
@@ -291,7 +304,6 @@ SECTION1_SOURCES = [
         "repo": "chembl-antimicrobial-models",
         "src_dir": "output/09c_scaffold_vs_random",
         "dst_dir": os.path.join(raw_dir, "chembl_model_reports", "09c_scaffold_vs_random"),
-        "eosvc_path": "data/raw/chembl_model_reports/09c_scaffold_vs_random",
         "include": lambda f: f == "09c_delta_auroc.csv",  # skip the PNG, only need the CSV
     },
     # CoAdd binarised task data, staged into per-type subfolders because
@@ -302,14 +314,12 @@ SECTION1_SOURCES = [
         "repo": "coadd-binary-tasks",
         "src_dir": "data/processed/coadd/03_binarised_inhibition",
         "dst_dir": os.path.join(raw_dir, "coadd_data", "03_binarised_inhibition"),
-        "eosvc_path": "data/raw/coadd_data/03_binarised_inhibition",
     },
     {
         "description": "CoAdd binarised MIC tasks",
         "repo": "coadd-binary-tasks",
         "src_dir": "data/processed/coadd/05_binarised_mic",
         "dst_dir": os.path.join(raw_dir, "coadd_data", "05_binarised_mic"),
-        "eosvc_path": "data/raw/coadd_data/05_binarised_mic",
     },
     # Canonical CoAdd screening-library SMILES list (full ~100k compounds, columns
     # smiles,std_smiles,inchikey,mw). Feeds 04_ersilia_predictions.sh as the CoAdd
@@ -320,7 +330,6 @@ SECTION1_SOURCES = [
         "repo": "coadd-binary-tasks",
         "src_dir": "data/processed/coadd",
         "dst_dir": os.path.join(raw_dir, "coadd_data"),
-        "eosvc_path": "data/raw/coadd_data",
         "include": lambda f: f == "00_smiles_info.csv",
     },
     # ChEMBL data-curation summaries (chembl-antimicrobial-tasks, Stage 4). Only the small
@@ -332,7 +341,6 @@ SECTION1_SOURCES = [
         "repo": "chembl-antimicrobial-tasks",
         "src_dir": "output/stage4",
         "dst_dir": os.path.join(raw_dir, "chembl_curation"),
-        "eosvc_path": "data/raw/chembl_curation",
         "recursive": True,
         "include": lambda f: f in _CURATION_SUMMARY_FILES,
     },
@@ -341,7 +349,6 @@ SECTION1_SOURCES = [
         "repo": "chembl-antimicrobial-tasks",
         "src_dir": "output/stage4/general_plots",
         "dst_dir": os.path.join(raw_dir, "chembl_curation", "general"),
-        "eosvc_path": "data/raw/chembl_curation/general",
         "include": lambda f: f in {
             "27_master_table.csv", "27_cutoff_sensitivity.csv",
             "27_final_data_overlap.csv", "27_chembl_space.json",
@@ -353,14 +360,13 @@ SECTION1_SOURCES = [
         "repo": "ersilia-ml-benchmark",
         "src_dir": "output/lazyqsar/v3.4.2",
         "dst_dir": os.path.join(raw_dir, "lazyqsar_benchmark"),
-        "eosvc_path": "data/raw/lazyqsar_benchmark",
         "include": lambda f: f == "all_results.csv",
     },
 ]
 
 
 # =============================================================================
-# Section 1 — Repos / eosvc
+# Section 1 — Companion repos (via their eosvc)
 # =============================================================================
 
 # NOTE: the eosquality reference library (~2.2 GB: Morgan FP index, 50-NN self-neighbour
@@ -381,18 +387,14 @@ SECTION1_SOURCES = [
 
 for source in SECTION1_SOURCES:
     print(f"\n{source['description']}...")
-    if args.eosvc:
-        download_from_eosvc(source["eosvc_path"], source["dst_dir"])
-
-    else:
-        copy_from_repo(
-            repo_name=source["repo"],
-            src_dir=source["src_dir"],
-            dst_dir=source["dst_dir"],
-            include_fn=source.get("include"),
-            rename_fn=source.get("rename"),
-            recursive=source.get("recursive", False),
-        )
+    fetch_from_eosvc(
+        repo=source["repo"],
+        src_dir=source["src_dir"],
+        dst_dir=source["dst_dir"],
+        include_fn=source.get("include"),
+        rename_fn=source.get("rename"),
+        recursive=source.get("recursive", False),
+    )
 
 
 # =============================================================================
@@ -441,47 +443,17 @@ else:
 # =============================================================================
 # Section 3 — Airtable
 # =============================================================================
-# Metadata downloaded from the Airtable share link into a dated, frozen file. Downstream scripts
-# read the file named by AIRTABLE_METADATA_FILE, so changing the live base cannot alter a finished
-# analysis — a new snapshot only happens when AIRTABLE_SNAPSHOT_DATE is bumped in src/default.py.
-
-# `keep_default_na=False` on BOTH reads is load-bearing, not defensive. `None` is a legitimate
-# value of the License vocabulary ("the upstream repo genuinely has no LICENSE file"), and it is
-# also a member of pandas' default NA set. Without this flag the round-trip below turns the string
-# `None` into NaN and writes an empty cell, so 28 models that correctly declare `License: None`
-# arrived in the snapshot indistinguishable from models that declare nothing at all. That silently
-# manufactured 28 spurious repo-vs-Airtable drift findings in tools/audit_model_metadata.py.
+# Metadata downloaded from the Airtable share link into a dated, frozen file named by
+# AIRTABLE_METADATA_FILE. A new snapshot only happens when AIRTABLE_SNAPSHOT_DATE is bumped by hand
+# in src/default.py; an existing dated file is never re-downloaded or overwritten.
 #
-# A live download is NEVER written to AIRTABLE_METADATA_FILE — that name may be pinned to the
-# hand-revised `airtable_metadata_manual.csv` (see src/default.py), and overwriting it with an
-# uncurated Airtable export would silently destroy the manual corrections. A fresh pull always
-# lands in a dated `airtable_metadata_{date}.csv` file instead; the manual file, if present, is
-# only ever read, never regenerated by this script.
-meta_path = os.path.join(raw_dir, AIRTABLE_METADATA_FILE)
-snapshot_path = os.path.join(
-    raw_dir, f"airtable_metadata_{AIRTABLE_SNAPSHOT_DATE.replace('-', '')}.csv"
-)
-if os.path.exists(meta_path):
+# The file is saved exactly as exported (raw data is read-only). `keep_default_na=False` is
+# load-bearing: `None` is a legitimate License value, and pandas' default NA set would blank it on
+# the round-trip. The Status remap (AIRTABLE_STATUS_REMAP) is applied on load, not here.
+snapshot_path = os.path.join(raw_dir, AIRTABLE_METADATA_FILE)
+if os.path.exists(snapshot_path):
     print(f"\n{AIRTABLE_METADATA_FILE} already exists, skipping download.")
-    df_meta = pd.read_csv(meta_path, keep_default_na=False)
-    used_meta_path = meta_path
-elif os.path.exists(snapshot_path):
-    print(f"\nDated snapshot {os.path.basename(snapshot_path)} already exists, skipping download.")
-    if AIRTABLE_METADATA_FILE != os.path.basename(snapshot_path):
-        print(
-            f"  WARNING: {AIRTABLE_METADATA_FILE} is missing — downstream scripts that read it "
-            f"by that name will fail until it is restored or src/default.py is updated."
-        )
-    df_meta = pd.read_csv(snapshot_path, keep_default_na=False)
-    used_meta_path = snapshot_path
 else:
-    if AIRTABLE_METADATA_FILE != os.path.basename(snapshot_path):
-        print(
-            f"\nWARNING: {AIRTABLE_METADATA_FILE} not found. Downloading a fresh dated snapshot "
-            f"instead — it will NOT be saved under the manual filename, so downstream scripts "
-            f"expecting {AIRTABLE_METADATA_FILE} will fail until it is restored or "
-            f"src/default.py is updated to point at the new dated file."
-        )
     print(f"\nDownloading Airtable metadata (new snapshot {AIRTABLE_SNAPSHOT_DATE})...")
     session = requests.Session()
     session.headers.update({
@@ -517,18 +489,15 @@ else:
         timeout=60,
     )
     csv_resp.raise_for_status()
-    df_meta = pd.read_csv(
+    df_raw = pd.read_csv(
         io.BytesIO(csv_resp.content), encoding="utf-8-sig", keep_default_na=False
     )
-    df_meta.to_csv(snapshot_path, index=False)
-    print(f"  -> {snapshot_path} ({len(df_meta)} models)")
-    used_meta_path = snapshot_path
+    df_raw.to_csv(snapshot_path, index=False)
+    print(f"  -> {snapshot_path} ({len(df_raw)} models)")
 
-# Provenance: the snapshot is a moving target upstream, so every run states which file it is using.
-# `used_meta_path` names the file actually read this run, which may differ from AIRTABLE_METADATA_FILE
-# when the manual override is missing (see the WARNINGs above).
-print(f"  Metadata {os.path.basename(used_meta_path)} (last Airtable pull {AIRTABLE_SNAPSHOT_DATE}): "
-      f"{len(df_meta)} models, {(df_meta['Status'] == 'Ready').sum()} Ready")
+df_meta = load_airtable_metadata(snapshot_path)
+print(f"  Metadata {AIRTABLE_METADATA_FILE} (Airtable pull {AIRTABLE_SNAPSHOT_DATE}): "
+      f"{len(df_meta)} models, {(df_meta['Status'] == 'Ready').sum()} Ready after remap")
 
 # =============================================================================
 # Section 4 — Isaura

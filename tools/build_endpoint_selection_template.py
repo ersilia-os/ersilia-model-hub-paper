@@ -59,9 +59,9 @@ import pandas as pd
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root, "..", "src"))
 
-from default import AIRTABLE_METADATA_FILE, ENDPOINT_TYPE_REGEX  # noqa: E402
+from default import ENDPOINT_TYPE_REGEX  # noqa: E402
+from airtable_utils import load_airtable_metadata  # noqa: E402
 
-meta_path = os.path.join(root, "..", "data", "raw", AIRTABLE_METADATA_FILE)
 col_index_path = os.path.join(root, "..", "output", "07_prediction_correlations", "07_column_index.csv")
 config_dir = os.path.join(root, "..", "config")
 out_path = os.path.join(config_dir, "08_endpoint_selection.csv")
@@ -155,21 +155,21 @@ MULTI_ORGANISM_OVERRIDE = {
     "eos2xeq": {c: "" for c in [  # structural-alert flags, not organism-specific despite the tag
         "has_pains", "has_brenk", "is_sim_known_ab", "nitrofuran_motif",
         "fluoroquinolone_motif", "carbepenem_motif", "betalactam_motif"]},
-    "eos3dys": {
-        "abaumannii_ATCC19606_inhib_50": "Acinetobacter baumannii",
-        "abaumannii_ATCC19606_mic_25": "Acinetobacter baumannii",
-        "calbicans_ATCC90028_inhib_50": "Candida albicans", "calbicans_ATCC90028_mic_25": "Candida albicans",
-        "cdeuterogattii_CBS7750_mic_25": "Cryptococcus deuterogattii",
-        "cglabrata_ATCC90030_mic_25": "Candida glabrata",
-        "cneoformans_H99_inhib_50": "Cryptococcus neoformans", "cneoformans_H99_mic_25": "Cryptococcus neoformans",
-        "ecoli_ATCC25922_inhib_50": "Escherichia coli", "ecoli_ATCC25922_mic_25": "Escherichia coli",
-        "ecoli_lpxC_inhib_50": "Escherichia coli", "ecoli_tolC_inhib_50": "Escherichia coli",
-        "kpneumoniae_ATCC700603_inhib_50": "Klebsiella pneumoniae",
-        "kpneumoniae_ATCC700603_mic_25": "Klebsiella pneumoniae",
-        "paeruginosa_ATCC27853_inhib_50": "Pseudomonas aeruginosa",
-        "paeruginosa_ATCC27853_mic_25": "Pseudomonas aeruginosa",
-        "paeruginosa_PAO397_inhib_50": "Pseudomonas aeruginosa", "paeruginosa_PAO397_mic_25": "Pseudomonas aeruginosa",
-        "saureus_ATCC43300_inhib_50": "Staphylococcus aureus", "saureus_ATCC43300_mic_25": "Staphylococcus aureus",
+    "eos3dys": {  # v2 column names (strain ids lower-cased since v2)
+        "abaumannii_atcc19606_inhib_50": "Acinetobacter baumannii",
+        "abaumannii_atcc19606_mic_25": "Acinetobacter baumannii",
+        "calbicans_atcc90028_inhib_50": "Candida albicans", "calbicans_atcc90028_mic_25": "Candida albicans",
+        "cdeuterogattii_cbs7750_mic_25": "Cryptococcus deuterogattii",
+        "cglabrata_atcc90030_mic_25": "Candida glabrata",
+        "cneoformans_h99_inhib_50": "Cryptococcus neoformans", "cneoformans_h99_mic_25": "Cryptococcus neoformans",
+        "ecoli_atcc25922_inhib_50": "Escherichia coli", "ecoli_atcc25922_mic_25": "Escherichia coli",
+        "ecoli_lpxc_inhib_50": "Escherichia coli", "ecoli_tolc_inhib_50": "Escherichia coli",
+        "kpneumoniae_atcc700603_inhib_50": "Klebsiella pneumoniae",
+        "kpneumoniae_atcc700603_mic_25": "Klebsiella pneumoniae",
+        "paeruginosa_atcc27853_inhib_50": "Pseudomonas aeruginosa",
+        "paeruginosa_atcc27853_mic_25": "Pseudomonas aeruginosa",
+        "paeruginosa_pao397_inhib_50": "Pseudomonas aeruginosa", "paeruginosa_pao397_mic_25": "Pseudomonas aeruginosa",
+        "saureus_atcc43300_inhib_50": "Staphylococcus aureus", "saureus_atcc43300_mic_25": "Staphylococcus aureus",
         "cytotoxicity_ic50": "Homo sapiens", "hemolitic_activity": "Homo sapiens",
     },
     "eos60mw": {
@@ -276,7 +276,7 @@ def main():
         print(f"[skip] {out_path} already exists — delete it first to regenerate from scratch.")
         return
 
-    meta = pd.read_csv(meta_path).fillna("")
+    meta = load_airtable_metadata()
     col_index = pd.read_csv(col_index_path)
     meta_by_id = meta.set_index("Identifier")
 

@@ -304,7 +304,13 @@ class PathogenConsensusAurocPlot(BasePlot):
     representative ('consensus') per-pathogen value. The mean dot's **area encodes the number of
     unique molecules** in that pathogen's ChEMBL dataset (area interpolated between a min and max
     marker size so small datasets stay visible; see the size key). Rows sorted by mean (best on
-    top); the dashed line marks the step-10 retention floor (mean AUROC 0.7).
+    top), unless ``order`` fixes them; the dashed line marks the step-10 retention floor (mean AUROC
+    0.7).
+
+    Drawn twice by step 03, for the same 193 retained models: once with the **random-split** CV
+    AUROCs (``pathogen_consensus_auroc``) and once with the **scaffold-split** ones
+    (``pathogen_consensus_auroc_scaffold``, from the companion repo's step 09c). The scaffold panel
+    takes the random panel's row order and both share one x axis, so they read side by side.
 
     NOTE: this summarises per-model CV AUROCs — it is NOT a per-compound consensus prediction
     (the CV pools share no held-out set, so a true ensemble AUROC is not computable here).
@@ -317,8 +323,10 @@ class PathogenConsensusAurocPlot(BasePlot):
 
     Three things had to give to reach 62 mm from the original 90 x 120 mm:
 
-    - The x axis starts at **0.68** rather than 0.6. Nothing is plotted below 0.715, so the old lower
-      quarter was empty space that existed only to host the legends.
+    - The x axis started at **0.68** rather than 0.6. **Superseded 2026-11-09:** both panels now run
+      from **0.5** (chance) to 1.0. Under the scaffold split, 3 retained models score below 0.68
+      (lowest 0.515) and would have fallen off the axis; the random panel shares the axis so the
+      shift between the two reads directly.
     - The **size key is gone** — no legend of scaled markers fits here. The mean-dot area still encodes
       unique molecules, so the range must go in the caption; ``self.molecule_range`` carries it and the
       caller prints it. Without that caption line the size encoding is decorative.
@@ -342,17 +350,18 @@ class PathogenConsensusAurocPlot(BasePlot):
     #: at 0.6 spent a quarter of the width on empty space that only existed to host the legends —
     #: which now sit in the empty upper-left corner instead.
     _AUROC_FLOOR = 0.7
-    _XLIM = (0.68, 1.005)
+    _XLIM = (0.5, 1.005)
     #: Key marker diameter (pt) and row spacing (in font-size units). Smaller than ``marker_legend``'s
     #: 6 pt default because these are swatches on a 62 mm panel, not measurements — and at 6 pt with
     #: tight spacing the two dots touch. The spacing is well above matplotlib's 0.5 default for the
     #: same reason: the rows have to clear the marker, not just the text.
     _LEGEND_MARKER_SIZE = 4.5
     _LEGEND_LABELSPACING = 0.9
-    #: Key position in AXES fractions, as ``loc="upper left"``'s anchor. The 0.7 retention line sits at
-    #: ``(0.7 - 0.68) / (1.005 - 0.68)`` = 6.2 % of the width, so anchoring at 0.12 keeps the whole box
-    #: clear of it — pinning to the spine instead put the marker column straight on the dashed line.
-    _LEGEND_ANCHOR = (0.12, 0.98)
+    #: Key position in AXES fractions, as ``loc="upper left"``'s anchor. On the 0.5-1.0 axis the 0.7
+    #: retention line sits at ``(0.7 - 0.5) / (1.005 - 0.5)`` = 40 % of the width, so a key starting
+    #: just off the spine ends well left of it, in the region only a handful of scaffold-split dots
+    #: reach.
+    _LEGEND_ANCHOR = (0.02, 0.98)
 
     def _area(self, c):
         """Marker area for a molecule count, sqrt-scaled between the size range (perceptual)."""
@@ -362,15 +371,22 @@ class PathogenConsensusAurocPlot(BasePlot):
         t = min(1.0, max(0.0, t))
         return self._SIZE_MIN + t * (self._SIZE_MAX - self._SIZE_MIN)
 
-    def __init__(self, entries, ax=None, cells=(2.04, 1.94)):
+    def __init__(self, entries, ax=None, cells=(2.04, 1.94), name="pathogen_consensus_auroc",
+                 xlabel="random-split CV AUROC", order=None):
         # entries: {"code", "pathogen", "aurocs": [...], "n_molecules": int}
+        # order: pathogen codes bottom-to-top; None sorts by this panel's own mean.
         BasePlot.__init__(self, ax=ax, cells=cells)
-        self.name = "pathogen_consensus_auroc"
+        self.name = name
         entries = [e for e in entries if e.get("aurocs")]
         if not entries:
             self._unavailable()
             return
-        entries = sorted(entries, key=lambda e: float(np.mean(e["aurocs"])))
+        if order is None:
+            entries = sorted(entries, key=lambda e: float(np.mean(e["aurocs"])))
+        else:
+            rank = {code: i for i, code in enumerate(order)}
+            entries = sorted(entries, key=lambda e: rank.get(e["code"], len(rank)))
+        self.order = [e["code"] for e in entries]
         counts = [e.get("n_molecules") for e in entries if e.get("n_molecules")]
         self._cmin = float(min(counts)) if counts else 1.0
         self._cmax = float(max(counts)) if counts else 1.0
@@ -389,7 +405,7 @@ class PathogenConsensusAurocPlot(BasePlot):
         self.ax.set_yticks(y)
         self.ax.set_yticklabels([abbrev(e["code"], {e["code"]: e["pathogen"]}) for e in entries])
         self.ax.set_xlim(*self._XLIM)
-        self.ax.set_xticks([0.7, 0.8, 0.9, 1.0])
+        self.ax.set_xticks([0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
         self.ax.set_ylim(-0.8, len(entries) - 0.2)
 
         # Colour key INSIDE the axes, upper left. The rows are sorted worst-to-best upward, so the top
@@ -407,14 +423,24 @@ class PathogenConsensusAurocPlot(BasePlot):
         # save_consensus_figure.
         self.molecule_range = (min(counts), max(counts)) if counts else None
 
-        self.label(xlabel="cross-validation AUROC", title="")
+        self.label(xlabel=xlabel, title="")
 
 
-def save_consensus_figure(entries, output_dir):
-    """Build and save the cross-pathogen consensus-AUROC summary; return its footprint dict."""
-    p = PathogenConsensusAurocPlot(entries)
+def save_consensus_figure(entries, output_dir, scaffold_entries=None):
+    """Build and save the cross-pathogen consensus-AUROC summaries; return their footprint dict.
+
+    ``entries`` hold the random-split CV AUROCs. If ``scaffold_entries`` (same structure,
+    scaffold-split AUROCs) is given, a second panel is drawn in the random panel's row order.
+    """
+    plots = [PathogenConsensusAurocPlot(entries)]
+    if scaffold_entries and plots[0].is_available:
+        plots.append(PathogenConsensusAurocPlot(
+            scaffold_entries, name="pathogen_consensus_auroc_scaffold",
+            xlabel="scaffold-split CV AUROC", order=plots[0].order))
     footprints = {}
-    if p.is_available:
+    for p in plots:
+        if not p.is_available:
+            continue
         p.save(output_dir)
         footprints[p.name] = list(p.cells)
         if p.molecule_range:

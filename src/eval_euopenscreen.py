@@ -1,7 +1,7 @@
 """Step 05 analysis engine — evaluate the ChEMBL pathogen models on EU OpenScreen.
 
 Consumes the step-04 Ersilia prediction CSVs
-(``output/04_ersilia_predictions/euopenscreen/{eosid}.csv``, headline column ``consensus_score``,
+(``output/04_ersilia_predictions/euopenscreen/{eosid}_{vMajor}.csv``, headline column ``consensus_score``,
 SMILES column ``input``) plus the EU OpenScreen ground-truth label files, and writes small
 pre-aggregated summary CSVs into ``output/05_euopenscreen_validation/`` that the figures
 (``plots_euopenscreen``) consume. The figures never touch per-molecule data.
@@ -34,6 +34,8 @@ from sklearn.metrics import roc_auc_score, roc_curve
 from default import (
     ACTIVITY_CLASSES,
     DEDUP_SUBDIR,
+    EUOS_ASSAY_CODE,
+    EUOS_PATHOGEN_LABEL,
     FULL_SUBDIR,
     HIT_CLASSES,
     NARROW_MAX_PATHOGENS,
@@ -45,6 +47,7 @@ from eval_common import (
     evaluate,
     load_predictions,
     merged_variants,
+    prediction_file,
     training_inchikeys,
 )
 
@@ -52,6 +55,29 @@ from eval_common import (
 # --------------------------------------------------------------------------- #
 # Loaders                                                                      #
 # --------------------------------------------------------------------------- #
+def euos_file_code(code):
+    """EU OpenScreen's organism code for one of OUR codes (used only to build file names)."""
+    return EUOS_ASSAY_CODE.get(code, code)
+
+
+def euos_code_to_assay(euos_root):
+    """Map OUR pathogen code to its EU OpenScreen primary assay id.
+
+    ``primary_assays_manual.csv`` uses EU OpenScreen's own codes (e.g. ``efaecalis``); they are
+    translated back to ours (``efaecium``) via ``EUOS_ASSAY_CODE`` so every join stays on our code.
+    """
+    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
+    ours = {v: k for k, v in EUOS_ASSAY_CODE.items()}
+    return {ours.get(c, c): a for c, a in zip(primary["pathogen_code"], primary["assay_eos_id"])}
+
+
+def load_euos_config(config_path):
+    """Pathogen table (pathogen, code, eosid) with step-05 row labels (``EUOS_PATHOGEN_LABEL``)."""
+    config = pd.read_csv(config_path)
+    config["pathogen"] = config["code"].map(EUOS_PATHOGEN_LABEL).fillna(config["pathogen"])
+    return config
+
+
 def load_euos_primary(euos_root, code, assay_id):
     """EU OpenScreen primary-assay labels as DataFrame[smiles, bin, inchikey].
 
@@ -104,7 +130,7 @@ def load_euos_primary(euos_root, code, assay_id):
         disc_note = f", {n_disc} discordant (resolved active)" if n_disc else ""
         print(f"  [dedup] {assay_id}: collapsed {n_collapsed} duplicate label row(s) to "
               f"{len(labels)} compounds{disc_note}")
-    merged_path = os.path.join(euos_root, "02_merged", f"02_{code}.csv")
+    merged_path = os.path.join(euos_root, "02_merged", f"02_{euos_file_code(code)}.csv")
     if os.path.exists(merged_path):
         inchi = pd.read_csv(merged_path, usecols=["smiles", "inchikey"]).drop_duplicates("smiles")
         labels = labels.merge(inchi, on="smiles", how="left")
@@ -167,8 +193,7 @@ def run_euopenscreen(pred_dir, euos_root, config, train_cache):
     exclusivity_pct_records). ``config`` is the
     pathogen table (pathogen, code, eosid); ``train_cache`` is a {code: set|None} of keys.
     """
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     name_by_code = dict(zip(config["code"], config["pathogen"]))
 
     # Pre-load the 7 shared primary assays once (reused by own + cross analyses).
@@ -288,7 +313,7 @@ def _load_exclusivity_task(euos_root, code, mode, inactives):
     ``06_subset_data/exclusivity/{code}_{mode}.csv`` (smiles, inchikey — actives only).
     Returns DataFrame[smiles, bin, inchikey] or None if the file is missing/empty.
     """
-    path = os.path.join(euos_root, "06_subset_data", "exclusivity", f"{code}_{mode}.csv")
+    path = os.path.join(euos_root, "06_subset_data", "exclusivity", f"{euos_file_code(code)}_{mode}.csv")
     if not os.path.exists(path):
         return None
     actives = pd.read_csv(path)
@@ -311,8 +336,7 @@ def run_individual_performance(pred_dir, euos_root, config, train_cache):
         score columns over the full prediction library — to see whether they rank compounds
         differently (label-free, so computed on all rows).
     """
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     name_by_code = dict(zip(config["code"], config["pathogen"]))
     eosid_by_code = dict(zip(config["code"], config["eosid"]))
 
@@ -321,9 +345,9 @@ def run_individual_performance(pred_dir, euos_root, config, train_cache):
         assay_id, eosid = code_to_assay.get(code), eosid_by_code.get(code)
         if assay_id is None or eosid is None:
             continue
-        path = os.path.join(pred_dir, "euopenscreen", f"{eosid}.csv")
+        path = prediction_file(pred_dir, "euopenscreen", eosid)
         if not os.path.exists(path):
-            print(f"  [skip indiv] euopenscreen/{eosid}.csv not present yet")
+            print(f"  [skip indiv] euopenscreen/{os.path.basename(path)} not present yet")
             continue
         pred = pd.read_csv(path)
         if "input" not in pred.columns:
@@ -388,8 +412,7 @@ def build_specificity_index(cross_df):
 
 def build_leakage_report(config, euos_root, train_cache):
     """Overlap between each shared model's training InChIKeys and its EU OpenScreen assay."""
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     rows = []
     for _, row in config.iterrows():
         code, pathogen = row["code"], row["pathogen"]
@@ -440,8 +463,7 @@ def run_active_overlap(euos_root, config):
     Compounds are matched on the raw SMILES string (consistent with :func:`run_hit_promiscuity`;
     the leakage report matches on InChIKey instead).
     """
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     name_by_code = dict(zip(config["code"], config["pathogen"]))
     actives = {}
     for code in SHARED_ORGANISMS:
@@ -484,8 +506,7 @@ def run_hit_promiscuity(euos_root, config):
       - hit_rows: one row per distinct active (smiles, inchikey, n_pathogens, pathogens,
         n_assays_tested), most promiscuous first — the compound-level table.
     """
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     name_by_code = dict(zip(config["code"], config["pathogen"]))
 
     actives, tested, keys = {}, {}, {}
@@ -562,8 +583,7 @@ def shared_training_inchikeys(models_root):
 
 def euos_inchikeys(euos_root, config):
     """smiles -> InChIKey over the 7 primary assays, for leakage filtering by InChIKey."""
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     keys = {}
     for code in SHARED_ORGANISMS:
         assay_id = code_to_assay.get(code)
@@ -625,8 +645,7 @@ def _consensus_scores_with_hit_counts(pred_dir, euos_root, config, agg, normaliz
     compounds with no conclusive primary result at all (already removed — they cannot be
     classified), or (None, 0) if any model's predictions are missing.
     """
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     eosid_by_code = dict(zip(config["code"], config["eosid"]))
 
     scores = {}
@@ -871,8 +890,7 @@ def run_exclusive_hit_model_rank(pred_dir, euos_root, config, train_keys=None,
       - compound_rows: per compound and ranking, its pathogen, the rank of its own model and the
         pathogen whose model ranked it top (a few hundred rows per ranking).
     """
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     name_by_code = dict(zip(config["code"], config["pathogen"]))
     eosid_by_code = dict(zip(config["code"], config["eosid"]))
 
@@ -1001,7 +1019,7 @@ def run_all(pred_dir, euos_root, models_root, config_path, output_dir):
     Returns a dict of the written DataFrames keyed by path relative to ``output_dir`` (also useful
     for testing). Prints a short coverage summary; nothing here mutates git-tracked or step-04 data.
     """
-    config = pd.read_csv(config_path)  # columns: pathogen, code, eosid
+    config = load_euos_config(config_path)  # columns: pathogen, code, eosid
 
     # Cache training InChIKeys per pathogen once (dedup source; may be None if absent).
     train_cache = {code: training_inchikeys(models_root, code) for code in config["code"]}

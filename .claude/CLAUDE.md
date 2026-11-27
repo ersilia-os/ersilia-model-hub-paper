@@ -128,7 +128,7 @@ Use Markdown. A naming convention like `YYYY-MM-DD_topic.md` or `NN_topic.md` ke
 
 | Section | When to use | Examples |
 |---|---|---|
-| **1 — Repos / eosvc** | Data from a companion git repo cloned at the same level as this repo, or from this repo's eosvc storage | EU OpenScreen task CSVs from `eu-openscreen-antimicrobial-tasks`; H5 prediction files once published |
+| **1 — Companion repos (via their eosvc)** | Published data of a companion repo, downloaded from that repo's eosvc storage in the public `eosvc-public` bucket (sibling clones are never read) | EU OpenScreen task CSVs from `eu-openscreen-antimicrobial-tasks`; H5 prediction files once published |
 | **2 — GitHub** | Static raw files with a stable public URL | Ersilia reference library, DrugBank SMILES |
 | **3 — Airtable** | Airtable metadata exports | Ersilia Model Hub metadata |
 | **4 — Isaura** | Pre-computed model predictions for a compound library | Annotation model outputs for the reference library |

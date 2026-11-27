@@ -89,13 +89,33 @@ SEARCH_PAUSE_S = 2.5
 STATS_RETRIES = 5
 STATS_PAUSE_S = 3.0
 
+# GitHub's secondary rate limit asks clients to "wait a few minutes"; back off 60 s, 120 s, ...
+RATE_LIMIT_RETRIES = 5
+RATE_LIMIT_PAUSE_S = 60.0
+SERVER_ERROR_PAUSE_S = 10.0
+
 
 def gh(*args):
-    """Run a read-only ``gh`` command and return its parsed JSON stdout."""
-    proc = subprocess.run(["gh", *args], capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"gh {' '.join(args)} failed:\n{proc.stderr.strip()}")
-    return json.loads(proc.stdout or "null")
+    """Run a read-only ``gh`` command and return its parsed JSON stdout.
+
+    Retries with a growing wait when GitHub answers with a (secondary) rate limit — the paginated
+    search sweep trips it even with SEARCH_PAUSE_S between calls — or with a transient server error
+    (HTTP 5xx, e.g. a 504 on stats/contributors). Both seen on 2026-11-09.
+    """
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
+        proc = subprocess.run(["gh", *args], capture_output=True, text=True)
+        if proc.returncode == 0:
+            return json.loads(proc.stdout or "null")
+        err = proc.stderr.lower()
+        rate_limited = "rate limit" in err
+        server_error = re.search(r"\(http 5\d\d\)", err) is not None
+        if not (rate_limited or server_error) or attempt == RATE_LIMIT_RETRIES:
+            break
+        wait = (RATE_LIMIT_PAUSE_S if rate_limited else SERVER_ERROR_PAUSE_S) * (attempt + 1)
+        reason = "rate-limited" if rate_limited else "server error"
+        print(f"    {reason}; waiting {wait:.0f} s (retry {attempt + 1}/{RATE_LIMIT_RETRIES})")
+        time.sleep(wait)
+    raise RuntimeError(f"gh {' '.join(args)} failed:\n{proc.stderr.strip()}")
 
 
 def _write(name, frame):
