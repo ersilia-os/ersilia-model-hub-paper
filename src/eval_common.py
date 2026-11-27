@@ -11,11 +11,21 @@ import os
 
 import pandas as pd
 
+from airtable_utils import prediction_version
 from default import SCORE_COL
 from metrics import compute_metrics
 
 METRIC_KEYS = ["n_eval", "n_active", "prevalence",
                "auroc", "auprc", "bedroc", "ef_1pct", "ef_5pct"]
+
+
+def prediction_file(pred_dir, library, eosid):
+    """Path of a step-04 prediction file: ``{pred_dir}/{library}/{eosid}_{vMajor}.csv``.
+
+    The major version comes from the Airtable snapshot (``prediction_version``), the same one
+    step 04 checks the fetched model against, so a file from another version is never read.
+    """
+    return os.path.join(pred_dir, library, f"{eosid}_{prediction_version(eosid)}.csv")
 
 
 def load_predictions(pred_dir, library, eosid, score_col=SCORE_COL):
@@ -29,22 +39,23 @@ def load_predictions(pred_dir, library, eosid, score_col=SCORE_COL):
     the file is missing, has no ``input`` column, or has multiple outputs but no
     ``consensus_score`` (ambiguous — never silently aggregated).
     """
-    path = os.path.join(pred_dir, library, f"{eosid}.csv")
+    path = prediction_file(pred_dir, library, eosid)
+    fname = f"{library}/{os.path.basename(path)}"
     if not os.path.exists(path):
-        print(f"  [skip] {library}/{eosid}.csv not present yet")
+        print(f"  [skip] {fname} not present yet")
         return None
     header = pd.read_csv(path, nrows=0).columns.tolist()
     if "input" not in header:
-        print(f"  [skip] {library}/{eosid}.csv missing 'input' column")
+        print(f"  [skip] {fname} missing 'input' column")
         return None
     feature_cols = [c for c in header if c not in ("key", "input")]
     if score_col in header:
         use = score_col
     elif len(feature_cols) == 1:
         use = feature_cols[0]
-        print(f"  [note] {library}/{eosid}.csv has no '{score_col}'; using sole output '{use}'")
+        print(f"  [note] {fname} has no '{score_col}'; using sole output '{use}'")
     else:
-        print(f"  [skip] {library}/{eosid}.csv has no '{score_col}' and "
+        print(f"  [skip] {fname} has no '{score_col}' and "
               f"{len(feature_cols)} outputs — ambiguous, not aggregating")
         return None
     df = pd.read_csv(path, usecols=["input", use])

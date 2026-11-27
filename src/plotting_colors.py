@@ -210,6 +210,8 @@ LICENSE_CLASS = {
     # NCSA = the University of Illinois/NCSA Open Source License, an OSI-approved MIT/BSD-style
     # licence with no share-alike duty. Added 2026-08-14 with the manual metadata revision.
     "NCSA": "Permissive",
+    # GPL-2.0 added 2026-11-09 with the fresh Airtable snapshot (eos8bpb, GPL-2.0-only).
+    "GPL-2.0": "Copyleft",
     "GPL-3.0": "Copyleft",
     "AGPL-3.0": "Copyleft",
     "LGPL-3.0": "Copyleft",

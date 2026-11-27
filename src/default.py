@@ -8,31 +8,31 @@ AIRTABLE_SHARE_URL = (
 AIRTABLE_BASE_ID = "appR6ZwgLgG8RTdoU"
 AIRTABLE_VIEW_ID = "viwy0inGR1xv2Tpfe"
 
-# The Airtable metadata is FROZEN at this snapshot. Every consumer reads the dated file named by
-# AIRTABLE_METADATA_FILE, never a generic "airtable_metadata.csv", so the analysis cannot drift
-# when the live base changes. To refresh: bump the date here and re-run 00_download_data.py, which
-# downloads the new dated file. Only the latest dated pull is kept on disk.
+# The Airtable metadata is FROZEN at this snapshot. Every consumer loads the dated file named by
+# AIRTABLE_METADATA_FILE (via airtable_utils.load_airtable_metadata), so the analysis cannot drift
+# when the live base changes. To refresh: bump the date here BY HAND and re-run
+# 00_download_data.py, which downloads data/raw/airtable_metadata_{YYYYMMDD}.csv if it is missing.
+# Older dated files are kept on disk as history and are not read by any script.
 #
 # The shared view excludes models with Status "Archived", so an archived model disappears from the
 # export entirely rather than showing up with a changed Status.
-# 2026-08-12: re-snapshotted after fixing an NA-coercion bug in 00_download_data.py that turned the
-# literal License value `None` into an empty cell. The 2026-08-07 and earlier files carry that
-# defect and must not be used to judge whether a model declares a licence.
-# 2026-10-01: fresh pull (237 models) kept as the reference copy of live Airtable alongside the
-# manual file; the 2026-08-06/07/12 dated files were deleted (user-directed).
-AIRTABLE_SNAPSHOT_DATE = "2026-10-01"
-# 2026-08-14: the whole catalogue was revised BY HAND offline — descriptions and interpretations
-# rewritten, and corrections to Task/Subtask (4 models), Biomedical Area (9), Target Organism (5),
-# License (22), Publication Type (9) and Publication Year (28). The corrected export was placed at
-# data/raw/airtable_metadata_manual.csv, which SUPERSEDES the dated snapshot above. The revisions
-# have NOT yet been synced back to Airtable, so re-downloading would undo them — which is why the
-# filename is pinned to the manual file rather than derived from AIRTABLE_SNAPSHOT_DATE.
-# The date constant is kept as the record of the last genuine Airtable pull, and is still what both
-# 00 and 01 print for provenance.
-# TO REVERT once the sync lands: bump AIRTABLE_SNAPSHOT_DATE, restore
-#   AIRTABLE_METADATA_FILE = f"airtable_metadata_{AIRTABLE_SNAPSHOT_DATE.replace('-', '')}.csv"
-# and re-run 00_download_data.py.
-AIRTABLE_METADATA_FILE = "airtable_metadata_manual.csv"
+#
+# History:
+#   2026-08-12  re-snapshotted after fixing an NA-coercion bug that blanked the literal License
+#               value `None`; earlier dated files carry that defect.
+#   2026-08-15  hand-revised catalogue (descriptions, Task/Subtask, Biomedical Area, Target
+#               Organism, License, Publication Type/Year). Formerly `airtable_metadata_manual.csv`,
+#               renamed to `airtable_metadata_20260815.csv` on 2026-11-09. The revisions have
+#               since been synced back to Airtable.
+#   2026-10-01  fresh pull (237 models), kept as a reference copy.
+#   2026-11-09  fresh pull; the manual file is retired and the filename is derived from the date again.
+AIRTABLE_SNAPSHOT_DATE = "2026-11-09"
+AIRTABLE_METADATA_FILE = f"airtable_metadata_{AIRTABLE_SNAPSHOT_DATE.replace('-', '')}.csv"
+
+# Status values treated as another status when the snapshot is LOADED (the raw file keeps
+# Airtable's value). "In maintenance" models are counted as Ready because they are being fixed as
+# part of this work, so they belong in the catalogue analysed here.
+AIRTABLE_STATUS_REMAP = {"In maintenance": "Ready"}
 
 REFERENCE_LIBRARY_URL = (
     "https://raw.githubusercontent.com/ersilia-os/"
@@ -43,6 +43,10 @@ DRUGBANK_URL = (
     "https://raw.githubusercontent.com/ersilia-os/"
     "sars-cov-2-chemspace/refs/heads/main/data/drugbank_smiles.csv"
 )
+
+# Public eosvc bucket, read over HTTPS by 00_download_data.py (Section 1). Each companion repo's
+# published data lives under {EOSVC_PUBLIC_URL}/{repo}/{path-within-repo}.
+EOSVC_PUBLIC_URL = "https://eosvc-public.s3.amazonaws.com"
 
 COADD_MODEL_ID = "eos3dys"
 
@@ -208,6 +212,21 @@ SHARED_ORGANISMS = [
     "abaumannii", "calbicans", "ecoli", "efaecium",
     "kpneumoniae", "paeruginosa", "saureus",
 ]
+
+# EU OpenScreen organism codes that differ from ours, as {our code: EU OpenScreen code}. Assay
+# EOS300080 tests Enterococcus FAECALIS ATCC 29212 (upstream relabelled it from `efaecium` on
+# 2026-11-09), but our only Enterococcus model is the E. FAECIUM ChEMBL model eos81zy. The pairing is
+# kept (user-directed, 2026-11-09): everything stays keyed by our code `efaecium`, and only the
+# EU OpenScreen file names are translated (eval_euopenscreen.euos_file_code).
+EUOS_ASSAY_CODE = {"efaecium": "efaecalis"}
+# Row labels for step 05 (EU OpenScreen) only — the asterisk is explained by EUOS_LABEL_FOOTNOTE,
+# which belongs in the caption of every step-05 figure with an Enterococcus row. CoAdd (step 06) and
+# ChEMBL figures keep "Enterococcus faecium": there the organism really is E. faecium.
+EUOS_PATHOGEN_LABEL = {"efaecium": "Enterococcus faecalis*"}
+EUOS_LABEL_FOOTNOTE = (
+    "* EU-OPENSCREEN assay on E. faecalis ATCC 29212 (EOS300080), scored with the "
+    "E. faecium model eos81zy."
+)
 
 # Hit classes for an EU OpenScreen compound, from how many of the 7 primary assays it hits:
 # inactive (0, in every assay where it has a conclusive result), exclusive (1),

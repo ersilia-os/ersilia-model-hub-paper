@@ -30,8 +30,13 @@ import numpy as np
 import pandas as pd
 
 from default import ACTIVITY_CLASSES, COADD_MODEL_ID, COADD_REF_STRAINS, SHARED_ORGANISMS
-from eval_common import evaluate
-from eval_euopenscreen import _load_exclusivity_task, load_euos_primary
+from eval_common import evaluate, prediction_file
+from eval_euopenscreen import (
+    _load_exclusivity_task,
+    euos_code_to_assay,
+    load_euos_config,
+    load_euos_primary,
+)
 
 # eos3dys endpoint metric suffix -> CoAdd binarised subdir holding that endpoint's labels/training set.
 _METRIC_SUBDIR = {
@@ -43,7 +48,8 @@ _METRIC_SUBDIR = {
 def _endpoint_to_strain(endpoint):
     """Parse an eos3dys endpoint into ``(strain, subdir)`` for its CoAdd binarised file.
 
-    ``abaumannii_ATCC19606_inhib_50`` -> ``("abaumannii_ATCC19606", "03_binarised_inhibition")``.
+    ``abaumannii_atcc19606_inhib_50`` -> ``("abaumannii_atcc19606", "03_binarised_inhibition")``
+    (eos3dys v2 lower-cases strain ids; v1 wrote ``ATCC19606``). Case is kept as given.
     Returns None for endpoints with no organism strain (``cytotoxicity_ic50``,
     ``hemolitic_activity``) or an unrecognised metric suffix.
     """
@@ -69,9 +75,17 @@ def coadd_training_inchikeys(coadd_root, endpoint):
     if parsed is None:
         return None
     strain, subdir = parsed
-    path = os.path.join(coadd_root, subdir, f"{strain}.csv")
-    if not os.path.exists(path):
+    # eos3dys v2 spells strain ids in lower case (`atcc19606`) while the CoAdd files keep upstream's
+    # (`ATCC19606`), so the file is matched case-insensitively — an exact-name lookup would pass on
+    # macOS's case-insensitive filesystem and silently miss on Linux.
+    strain_dir = os.path.join(coadd_root, subdir)
+    if not os.path.isdir(strain_dir):
         return None
+    by_lower = {f.lower(): f for f in os.listdir(strain_dir)}
+    fname = by_lower.get(f"{strain}.csv".lower())
+    if fname is None:
+        return None
+    path = os.path.join(strain_dir, fname)
     try:
         keys = pd.read_csv(path, usecols=["inchikey"])["inchikey"]
     except (ValueError, KeyError):
@@ -87,8 +101,7 @@ def run_eos3dys_euopenscreen(pred_dir, euos_root, coadd_root, config, eos_id=COA
     assay_pathogen, same_organism, set, + metrics. ``config`` is the pathogen table (for the
     assay pathogen names).
     """
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     name_by_code = dict(zip(config["code"], config["pathogen"]))
 
     # The 7 shared EU OpenScreen primary assays = the matrix columns.
@@ -101,13 +114,13 @@ def run_eos3dys_euopenscreen(pred_dir, euos_root, coadd_root, config, eos_id=COA
         if lab is not None:
             assays[code] = lab
 
-    path = os.path.join(pred_dir, "euopenscreen", f"{eos_id}.csv")
+    path = prediction_file(pred_dir, "euopenscreen", eos_id)
     if not os.path.exists(path):
-        print(f"  [skip] euopenscreen/{eos_id}.csv not present")
+        print(f"  [skip] euopenscreen/{os.path.basename(path)} not present")
         return []
     pred = pd.read_csv(path)
     if "input" not in pred.columns:
-        print(f"  [skip] euopenscreen/{eos_id}.csv missing 'input' column")
+        print(f"  [skip] euopenscreen/{os.path.basename(path)} missing 'input' column")
         return []
     pred = pred.rename(columns={"input": "smiles"})
     endpoints = [c for c in pred.columns if c not in ("key", "smiles")]
@@ -130,7 +143,7 @@ def run_eos3dys_euopenscreen(pred_dir, euos_root, coadd_root, config, eos_id=COA
 
 def eos3dys_endpoints(pred_dir, eos_id=COADD_MODEL_ID):
     """The eos3dys output columns present in the step-04 EU OpenScreen prediction file."""
-    path = os.path.join(pred_dir, "euopenscreen", f"{eos_id}.csv")
+    path = prediction_file(pred_dir, "euopenscreen", eos_id)
     if not os.path.exists(path):
         return []
     header = pd.read_csv(path, nrows=0).columns.tolist()
@@ -163,7 +176,8 @@ def matched_endpoints(pred_dir, eos_id=COADD_MODEL_ID):
             continue                                   # no EU OpenScreen assay for this organism
         metric = ep[len(strain_key) + 1:]
         ref = COADD_REF_STRAINS.get(code)
-        is_ref = strain_key == f"{code}_{ref}" if ref else False
+        # Case-insensitive: eos3dys v2 lower-cases strain ids, COADD_REF_STRAINS keeps upstream's.
+        is_ref = strain_key.lower() == f"{code}_{ref}".lower() if ref else False
         current = matched.setdefault(code, {}).get(metric)
         if current is None:
             matched[code][metric] = ep
@@ -174,7 +188,7 @@ def matched_endpoints(pred_dir, eos_id=COADD_MODEL_ID):
     for code, by_metric in matched.items():
         ref = COADD_REF_STRAINS.get(code)
         for metric, ep in by_metric.items():
-            if ref and not ep.startswith(f"{code}_{ref}_"):
+            if ref and not ep.lower().startswith(f"{code}_{ref}_".lower()):
                 print(f"  [note] {code} {metric}: reference strain {ref} has no endpoint — "
                       f"falling back to {ep}")
     return matched
@@ -193,8 +207,7 @@ def build_eos3dys_overlap_report(pred_dir, euos_root, coadd_root, config, eos_id
     n_eval_conclusive, n_active, n_inactive, n_overlap, n_overlap_active, n_overlap_inactive) plus
     ``endpoint`` and ``metric``, so the existing overlap panel can be reused per endpoint.
     """
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     name_by_code = dict(zip(config["code"], config["pathogen"]))
 
     rows = []
@@ -237,13 +250,12 @@ def run_eos3dys_exclusivity(pred_dir, euos_root, coadd_root, config, eos_id=COAD
     6 organisms with an eos3dys endpoint are evaluated. Metrics are ``raw`` + ``dedup`` (dedup
     removing that endpoint's CoAdd training compounds).
     """
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     name_by_code = dict(zip(config["code"], config["pathogen"]))
 
-    path = os.path.join(pred_dir, "euopenscreen", f"{eos_id}.csv")
+    path = prediction_file(pred_dir, "euopenscreen", eos_id)
     if not os.path.exists(path):
-        print(f"  [skip] euopenscreen/{eos_id}.csv not present")
+        print(f"  [skip] euopenscreen/{os.path.basename(path)} not present")
         return []
     pred = pd.read_csv(path).rename(columns={"input": "smiles"})
 
@@ -270,8 +282,7 @@ def run_eos3dys_exclusivity(pred_dir, euos_root, coadd_root, config, eos_id=COAD
 
 def _matched_labels(euos_root, config, codes):
     """{code: DataFrame[smiles, bin, inchikey]} — the own primary assay of each matched organism."""
-    primary = pd.read_csv(os.path.join(euos_root, "primary_assays_manual.csv"))
-    code_to_assay = dict(zip(primary["pathogen_code"], primary["assay_eos_id"]))
+    code_to_assay = euos_code_to_assay(euos_root)
     labels = {}
     for code in codes:
         assay_id = code_to_assay.get(code)
@@ -355,7 +366,7 @@ def run_eos3dys_exclusive_rank(pred_dir, euos_root, coadd_root, config, eos_id=C
     matched = matched_endpoints(pred_dir, eos_id)
     labels = _matched_labels(euos_root, config, matched)
     name_by_code = dict(zip(config["code"], config["pathogen"]))
-    path = os.path.join(pred_dir, "euopenscreen", f"{eos_id}.csv")
+    path = prediction_file(pred_dir, "euopenscreen", eos_id)
     if not os.path.exists(path) or not labels:
         print(f"  [skip] {eos_id} predictions or matched assays unavailable")
         return [], []
@@ -444,7 +455,7 @@ def run_eos3dys_consensus_max(pred_dir, euos_root, coadd_root, config, eos_id=CO
     """
     matched = matched_endpoints(pred_dir, eos_id)
     labels = _matched_labels(euos_root, config, matched)
-    path = os.path.join(pred_dir, "euopenscreen", f"{eos_id}.csv")
+    path = prediction_file(pred_dir, "euopenscreen", eos_id)
     if not os.path.exists(path) or not labels:
         print(f"  [skip] {eos_id} predictions or matched assays unavailable")
         return [], []
@@ -505,7 +516,7 @@ def run_eos3dys_consensus_max(pred_dir, euos_root, coadd_root, config, eos_id=CO
 
 def run_all(pred_dir, euos_root, coadd_root, config_path, output_dir, eos_id=COADD_MODEL_ID):
     """Run the eos3dys-on-EU-OpenScreen analyses and write their summary CSVs."""
-    config = pd.read_csv(config_path)  # columns: pathogen, code, eosid
+    config = load_euos_config(config_path)  # columns: pathogen, code, eosid
     print(f"[eos3dys] evaluating {eos_id} endpoints on the EU OpenScreen assays ...")
     df = pd.DataFrame(run_eos3dys_euopenscreen(pred_dir, euos_root, coadd_root, config, eos_id))
 

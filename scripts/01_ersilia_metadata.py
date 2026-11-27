@@ -42,6 +42,7 @@ from default import (SUBTASK_PARENT, SUBTASK_DISPLAY, BIOAREA_DISPLAY,  # noqa: 
                      BIOAREA_GROUP, BIOAREA_GROUP_OTHER, ACTIVITY_SUBTASK,
                      RUNTIME_BATCH, RUNTIME_COLUMN,
                      AIRTABLE_METADATA_FILE, AIRTABLE_SNAPSHOT_DATE)
+from airtable_utils import load_airtable_metadata  # noqa: E402
 
 outpath = os.path.join(root, "..", "output", "01_models_metadata")
 os.makedirs(outpath, exist_ok=True)
@@ -49,13 +50,9 @@ os.makedirs(outpath, exist_ok=True)
 pathogens_path = os.path.join(root, "..", "config", "pathogens_of_interest.csv")
 training_sizes_path = os.path.join(root, "..", "config", "model_training_sizes.csv")
 
-# `keep_default_na=False` matches 00_download_data.py's read of the same file: `None` is a
-# legitimate License value ("repo checked, confirmed no LICENSE file"), and pandas' default NA set
-# would otherwise coerce it to NaN, indistinguishable from a genuinely blank cell.
-df_all = pd.read_csv(os.path.join(root, "..", "data", "raw", AIRTABLE_METADATA_FILE),
-                     encoding="utf-8-sig", keep_default_na=False)
+df_all = load_airtable_metadata()
 print(f"Metadata: {AIRTABLE_METADATA_FILE} "
-      f"(last Airtable pull {AIRTABLE_SNAPSHOT_DATE})")
+      f"(Airtable pull {AIRTABLE_SNAPSHOT_DATE})")
 print(len(df_all))
 # The cumulative series below needs the unfiltered frame (every model that carries a date, whatever
 # its Status), so df_all is kept alongside the Ready-only frame the snapshot panels use.
@@ -255,13 +252,15 @@ save_metadata_figures(
 #
 # Models with no Incorporation Date are excluded — the date is the axis, so there is nowhere to
 # put them. They are never imputed, and the count is printed below for the caption.
-dated = df_all[df_all["Incorporation Date"].notna()].copy()
+# The snapshot is read with keep_default_na=False, so a missing date is "" rather than NaN.
+has_date = df_all["Incorporation Date"].astype(str).str.strip() != ""
+dated = df_all[has_date].copy()
 dated["month"] = pd.to_datetime(dated["Incorporation Date"]).dt.to_period("M")
 months = pd.period_range(dated["month"].min(), dated["month"].max(), freq="M")
 # Month ends, so the last point sits at the real end of the series rather than on its first day.
 month_ends = months.to_timestamp(how="end")
 
-n_undated = int(df_all["Incorporation Date"].isna().sum())
+n_undated = int((~has_date).sum())
 print(f"\n[growth] {len(dated)} models carry an Incorporation Date "
       f"({dated['Incorporation Date'].min()} to {dated['Incorporation Date'].max()}); "
       f"{n_undated} have none and are excluded, not imputed")

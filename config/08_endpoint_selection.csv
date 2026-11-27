@@ -33,7 +33,6 @@ eos2e3s,antimicrobial-activity-paeruginosa,chembl_single_point_3,higher,Pseudomo
 eos2e3s,antimicrobial-activity-paeruginosa,chembl_single_point_4,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
 eos2e3s,antimicrobial-activity-paeruginosa,chembl_single_point_5,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
 eos2e3s,antimicrobial-activity-paeruginosa,consensus_score,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos2gth,maip-malaria-surrogate,maip_score,higher,Plasmodium falciparum,Protozoa,wild-type,bioactivity,Yes
 eos2l0q,schisto-swisstph,adult_ic50,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
 eos2l0q,schisto-swisstph,adult_perc,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
 eos2l0q,schisto-swisstph,adult_perc_33,higher,Schistosoma mansoni,Helminths,wild-type,bioactivity,Yes
@@ -50,26 +49,26 @@ eos2xeq,antibiotics-downselection,nitrofuran_motif,higher,,,,structural_alert,No
 eos3804,chemprop-abaumannii,abaumannii_inhibition_probability,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
 eos3dys,coadd-antimicrobial-activity,cytotoxicity_ic50,higher,Homo sapiens,,,toxicity,No
 eos3dys,coadd-antimicrobial-activity,hemolitic_activity,higher,Homo sapiens,,,toxicity,No
-eos3dys,coadd-antimicrobial-activity,calbicans_ATCC90028_inhib_50,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,calbicans_ATCC90028_mic_25,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,cglabrata_ATCC90030_mic_25,higher,Candida glabrata,Fungi,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,cdeuterogattii_CBS7750_mic_25,higher,Cryptococcus deuterogattii,Fungi,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,cneoformans_H99_inhib_50,higher,Cryptococcus neoformans,Fungi,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,cneoformans_H99_mic_25,higher,Cryptococcus neoformans,Fungi,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,abaumannii_ATCC19606_inhib_50,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,abaumannii_ATCC19606_mic_25,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,ecoli_ATCC25922_inhib_50,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,ecoli_ATCC25922_mic_25,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,ecoli_lpxC_inhib_50,higher,Escherichia coli,Gram-negative bacteria,sensitized,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,ecoli_tolC_inhib_50,higher,Escherichia coli,Gram-negative bacteria,sensitized,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,kpneumoniae_ATCC700603_inhib_50,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,kpneumoniae_ATCC700603_mic_25,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,paeruginosa_ATCC27853_inhib_50,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,paeruginosa_ATCC27853_mic_25,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,paeruginosa_PAO397_inhib_50,higher,Pseudomonas aeruginosa,Gram-negative bacteria,sensitized,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,paeruginosa_PAO397_mic_25,higher,Pseudomonas aeruginosa,Gram-negative bacteria,sensitized,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,saureus_ATCC43300_inhib_50,higher,Staphylococcus aureus,Gram-positive bacteria,resistant,bioactivity,Yes
-eos3dys,coadd-antimicrobial-activity,saureus_ATCC43300_mic_25,higher,Staphylococcus aureus,Gram-positive bacteria,resistant,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,calbicans_atcc90028_inhib_50,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,calbicans_atcc90028_mic_25,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,cglabrata_atcc90030_mic_25,higher,Candida glabrata,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,cdeuterogattii_cbs7750_mic_25,higher,Cryptococcus deuterogattii,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,cneoformans_h99_inhib_50,higher,Cryptococcus neoformans,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,cneoformans_h99_mic_25,higher,Cryptococcus neoformans,Fungi,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,abaumannii_atcc19606_inhib_50,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,abaumannii_atcc19606_mic_25,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,ecoli_atcc25922_inhib_50,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,ecoli_atcc25922_mic_25,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,ecoli_lpxc_inhib_50,higher,Escherichia coli,Gram-negative bacteria,sensitized,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,ecoli_tolc_inhib_50,higher,Escherichia coli,Gram-negative bacteria,sensitized,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,kpneumoniae_atcc700603_inhib_50,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,kpneumoniae_atcc700603_mic_25,higher,Klebsiella pneumoniae,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,paeruginosa_atcc27853_inhib_50,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,paeruginosa_atcc27853_mic_25,higher,Pseudomonas aeruginosa,Gram-negative bacteria,wild-type,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,paeruginosa_pao397_inhib_50,higher,Pseudomonas aeruginosa,Gram-negative bacteria,sensitized,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,paeruginosa_pao397_mic_25,higher,Pseudomonas aeruginosa,Gram-negative bacteria,sensitized,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,saureus_atcc43300_inhib_50,higher,Staphylococcus aureus,Gram-positive bacteria,resistant,bioactivity,Yes
+eos3dys,coadd-antimicrobial-activity,saureus_atcc43300_mic_25,higher,Staphylococcus aureus,Gram-positive bacteria,resistant,bioactivity,Yes
 eos3f8h,eu-openscreen-hts,abaumannii,higher,Acinetobacter baumannii,Gram-negative bacteria,wild-type,bioactivity,Yes
 eos3f8h,eu-openscreen-hts,calbicans,higher,Candida albicans,Fungi,wild-type,bioactivity,Yes
 eos3f8h,eu-openscreen-hts,ecoli,higher,Escherichia coli,Gram-negative bacteria,wild-type,bioactivity,Yes

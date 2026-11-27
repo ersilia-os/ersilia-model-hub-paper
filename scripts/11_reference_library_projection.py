@@ -58,6 +58,7 @@ import sys
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(root, "..", "src"))
 
+from airtable_utils import prediction_version  # noqa: E402
 from default import (COADD_MODEL_ID, PROJECTION_MODEL_ID,  # noqa: E402
                      PROJECTION_PREDS_SUBDIR)
 from eval_projection import run_all, run_coadd, run_auroc_matched_umap  # noqa: E402
@@ -68,7 +69,9 @@ config_dir = os.path.join(root, "..", "config")
 projection_file = os.path.join(
     root, "..", "data", "processed", PROJECTION_PREDS_SUBDIR, f"{PROJECTION_MODEL_ID}_v1.csv")
 pred_dir = os.path.join(root, "..", "data", "processed", "annotation_preds_ref_library")
-coadd_pred_file = os.path.join(pred_dir, f"{COADD_MODEL_ID}_v1.csv")
+# Version follows the Airtable snapshot (eos3dys v2 since 2026-11-09), never hard-coded.
+coadd_pred_file = os.path.join(
+    pred_dir, f"{COADD_MODEL_ID}_{prediction_version(COADD_MODEL_ID)}.csv")
 pathogens_csv = os.path.join(config_dir, "pathogens_of_interest.csv")
 selection_csv = os.path.join(config_dir, "08_endpoint_selection.csv")
 output_dir = os.path.join(root, "..", "output", "11_reference_library_projection")
